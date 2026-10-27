@@ -1,0 +1,28 @@
+services:
+  server:
+    image: torquenest_backend_img
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: Torquenest_node_container
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+    depends_on:
+      - database
+
+  database:
+    image: torquenest_postgres_img:latest
+    container_name: Torquenest_postgres_container
+    environment:
+      POSTGRES_DB: TORQUENEST
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DbPassword:-postgres}
+    volumes:
+      - POSTGRES-Data:/var/lib/postgresql
+    ports:
+      - "${DbPort:-5432}:5432"
+
+volumes:
+  POSTGRES-Data:

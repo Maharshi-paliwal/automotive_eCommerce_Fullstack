@@ -4,12 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "postinstall":"npx prisma generate",
     "start": "tsx server.ts",
     "server": "nodemon --exec tsx server.ts",
     "build": "tsc",
     "test": "jest --config jest.config.cjs",
     "test:watch": "jest --config jest.config.cjs --watch",
-    "test:coverage": "jest --config jest.config.cjs --coverage"
+    "test:coverage": "jest --config jest.config.cjs --coverage",
+    "seed":"tsx seed.ts"
   },
   "keywords": [],
   "author": "",

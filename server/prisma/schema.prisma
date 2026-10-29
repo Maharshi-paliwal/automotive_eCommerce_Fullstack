@@ -41,18 +41,22 @@ model Address {
 }
 
 model Product {
-  id            String  @id @db.Uuid
-  name          String?
-  description   String? @default("")
-  price         Float?
-  originalPrice Float?  @default(0)
-  image         String?
-  category      String?
-  unit          String? @default("piece")
-  stock         Int?    @default(0)
-  isOrganic     Boolean? @default(false)
-  rating        Float?  @default(0)
-  reviewCount   Int?    @default(0)
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String?
+  brand             String?
+  description       String?  @default("")
+  price             Float?
+  originalPrice     Float?   @default(0)
+  image             String?
+  category          String?
+  unit              String?  @default("piece")
+  stock             Int?     @default(0)
+  isOrganic         Boolean? @default(false)
+  iGenuine          Boolean? @default(false)
+  compatibleVehicles String[] @default([])
+  partNumber        String?
+  rating            Float?   @default(0)
+  reviewCount       Int?     @default(0)
 
   createdAt DateTime? @default(now()) @db.Timestamp(3)
   updatedAt DateTime? @updatedAt @db.Timestamp(3)

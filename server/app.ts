@@ -4,6 +4,9 @@ import authRouter from './routes/authRoutes.js'
 import productrouter from './routes/productRoutes.js'
 import uploadRouter from './routes/uploadRoutes.js'
 import orderRouter from './routes/orderRoutes.js'
+import addressRouter from './routes/addressRoutes.js'
+import adminRouter from './routes/adminRoutes.js'
+import deliverypartnerRouter from './routes/deliverypartnerRoutes.js'
 
 const app=express()
 
@@ -16,6 +19,9 @@ app.use('/api/auth', authRouter)
 app.use('/api/products', productrouter)
 app.use('/api/upload', uploadRouter)
 app.use('/api/orders', orderRouter)
+app.use('/api/addresses', addressRouter)
+app.use('/api/admin', adminRouter)
+app.use('/api/delivery', deliverypartnerRouter)
 
 app.use((error:unknown, _req:Request, res:Response, _next:NextFunction)=>{
   console.error(error)

@@ -1,20 +1,25 @@
 services:
   server:
     image: torquenest_backend_img
-    build:
-      context: .
-      dockerfile: dockerfile
+    build: .
     container_name: Torquenest_node_container
-    env_file:
-      - .env
     ports:
       - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      DbURL: postgresql://postgres:torquenextpass@database:5432/TORQUENEST?schema=public
+      DATABASE_URL: postgresql://postgres:torquenextpass@database:5432/TORQUENEST?schema=public
     depends_on:
       - database
+      - redis
 
   database:
     image: torquenest_postgres_img:latest
     container_name: Torquenest_postgres_container
+    env_file:
+      - .env
     environment:
       POSTGRES_DB: TORQUENEST
       POSTGRES_USER: postgres
@@ -24,5 +29,15 @@ services:
     ports:
       - "${DbPort:-5432}:5432"
 
+  redis:
+    image: redis:alpine
+    container_name: Torquenest_redis_container
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+    - "6379:6379"
+    volumes:
+      - Redis-Data:/data
+
 volumes:
   POSTGRES-Data:
+  Redis-Data:

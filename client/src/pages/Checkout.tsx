@@ -111,8 +111,8 @@ const Checkout = () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Please sign in before placing an order.");
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-      const response = await fetch(`${apiUrl}/orders`, {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const response = await fetch(`${apiUrl}/api/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ items: items.map(({ product, quantity }) => ({ product: product._id, quantity })), shippingAddress: address, paymentMethod }),
@@ -146,7 +146,7 @@ const Checkout = () => {
         order_id: result.payment.id,
         handler: async (payment: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
           try {
-            const verified = await fetch(`${apiUrl}/orders/payment/verify`, {
+            const verified = await fetch(`${apiUrl}/api/orders/payment/verify`, {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
               body: JSON.stringify(payment),

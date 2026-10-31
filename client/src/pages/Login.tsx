@@ -16,8 +16,8 @@ const Login = () => {
     setLoading(true);
     setError("");
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-      const response = await fetch(`${apiUrl}/auth/${isLoginState ? "login" : "register"}`, {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const response = await fetch(`${apiUrl}/api/auth/${isLoginState ? "login" : "register"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isLoginState ? { email, password } : { name, email, password }),

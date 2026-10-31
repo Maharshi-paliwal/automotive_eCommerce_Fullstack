@@ -1,0 +1,72 @@
+
+
+x-app: &app
+  image: torquenest-server:latest
+  build:
+    context: .
+    dockerfile: dockerfile
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    REDIS_HOST: redis
+    DbURL: postgresql://postgres:${DbPassword:?set DbPassword in .env}@database:5432/TORQUENEST
+  depends_on:
+    database:
+      condition: service_healthy
+    redis:
+      condition: service_started
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - server
+
+  server:
+    <<: *app
+    container_name: torquenest_server
+
+  worker:
+    <<: *app
+    container_name: torquenest_worker
+    command: ["node", "dist/worker.js"]
+
+  database:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    container_name: torquenest_postgres
+    environment:
+      POSTGRES_DB: TORQUENEST
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DbPassword:?set DbPassword in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d TORQUENEST"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    container_name: torquenest_redis
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

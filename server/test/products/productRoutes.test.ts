@@ -31,7 +31,7 @@ describe('product routes', () => {
     const response = await request(app).get('/api/products/flash-deals')
 
     expect(response.status).toBe(200)
-    expect(response.body.produtcs).toEqual([{ id: 'p1', name: 'Apples', price: 80, originalPrice: 100, stock: 4, discount: 20 }])
+    expect(response.body.products).toEqual([{ id: 'p1', name: 'Apples', price: 80, originalPrice: 100, stock: 4, discount: 20 }])
     expect(mockPrisma.product.findMany).toHaveBeenCalledWith({ where: { stock: { gt: 0 } }, orderBy: { originalPrice: 'desc' } })
   })
 

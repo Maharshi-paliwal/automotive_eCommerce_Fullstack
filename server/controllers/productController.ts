@@ -19,7 +19,7 @@ export const getFlashDeals = async(req:Request, res: Response)=>{
   };
 });
 
-res.json({produtcs:productsWithDiscount.slice(0,8)})
+res.json({products:productsWithDiscount.slice(0,8)})
 }
 
 //get /api/products

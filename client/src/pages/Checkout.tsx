@@ -13,6 +13,11 @@ import { useNavigate } from "react-router-dom";
 import { dummyAddressData } from "../assets/assets";
 import type { Address } from "../types";
 import { useCartStore } from "../zustand/UseCartStore";
+import toast from "react-hot-toast";
+
+declare global {
+  interface Window { Razorpay?: new (options: Record<string, unknown>) => { open: () => void }; }
+}
 
 import CheckoutAddress from "../components/Checkout/CheckoutAddress";
 import CheckoutPayment from "../components/Checkout/CheckoutPayment";
@@ -104,10 +109,66 @@ const Checkout = () => {
     setLoading(true);
 
     try {
-      // Connect this to the backend order API later.
-      navigate("/orders");
-    } finally {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Please sign in before placing an order.");
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+      const response = await fetch(`${apiUrl}/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ items: items.map(({ product, quantity }) => ({ product: product._id, quantity })), shippingAddress: address, paymentMethod }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "Could not create your order.");
+
+      if (paymentMethod === "cash") {
+        useCartStore.getState().clearCart();
+        navigate("/orders");
+        return;
+      }
+
+      if (!result.payment?.keyId) throw new Error("Payment gateway is not configured.");
+      if (!window.Razorpay) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://checkout.razorpay.com/v1/checkout.js";
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error("Could not load Razorpay checkout."));
+          document.body.appendChild(script);
+        });
+      }
+
+      const gateway = new window.Razorpay!({
+        key: result.payment.keyId,
+        amount: result.payment.amount,
+        currency: result.payment.currency,
+        name: "TorqueNest",
+        description: "Order payment",
+        order_id: result.payment.id,
+        handler: async (payment: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          try {
+            const verified = await fetch(`${apiUrl}/orders/payment/verify`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify(payment),
+            });
+            const verification = await verified.json();
+            if (!verified.ok) throw new Error(verification.message || "Payment verification failed.");
+            useCartStore.getState().clearCart();
+            navigate("/orders");
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Payment verification failed.");
+            setLoading(false);
+          }
+        },
+        modal: { ondismiss: () => setLoading(false) },
+        theme: { color: "#1B3022" },
+      });
+      gateway.open();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not place your order.");
       setLoading(false);
+    } finally {
+      if (paymentMethod === "cash") setLoading(false);
     }
   };
 

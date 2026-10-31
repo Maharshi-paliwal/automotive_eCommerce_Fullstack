@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import {prisma} from '../config/prisma.js'
+import { getJwtSecret } from '../config/runtimeConfig.js'
 
 
 const deliveryAuth=async(req:Request, res:Response, next:NextFunction)=>{
@@ -10,7 +11,7 @@ if(!authHeader || !authHeader.startsWith("Bearer ")){
   return res.status(401).json({message:"No token provided"})
 }
 const token=authHeader.split(" ")[1]
-const decoded=jwt.verify(token, process.env.JWT_SECRET as string) as {id:string, role:string}
+const decoded=jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as {id:string, role:string}
 
 if(decoded.role!=="delivery"){
   return res.status(403).json({message:"Access denied.Delivery partner only"})

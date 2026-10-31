@@ -11,7 +11,7 @@ jest.mock('../../config/s3.js', () => ({ s3Client: { send: mockSend }, bucketNam
 jest.mock('bullmq', () => ({ Queue: jest.fn().mockImplementation(() => ({ add: jest.fn() })), Worker: jest.fn().mockImplementation(() => ({ on: jest.fn() })) }))
 
 const { default: app } = require('../../app.js') as typeof import('../../app.js')
-const token = jwt.sign({ id: 'admin-1' }, 'jest-only-secret')
+const token = jwt.sign({ id: 'admin-1' }, 'jest-only-secret-with-more-than-thirty-two-characters')
 
 describe('upload routes', () => {
   afterEach(() => jest.clearAllMocks())

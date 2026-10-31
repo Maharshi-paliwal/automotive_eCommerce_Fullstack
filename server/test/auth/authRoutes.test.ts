@@ -6,6 +6,7 @@ const mockPrisma = {
   user: {
     findUnique: jest.fn<(...args: any[]) => Promise<any>>(),
     create: jest.fn<(...args: any[]) => Promise<any>>(),
+    update: jest.fn<(...args: any[]) => Promise<any>>().mockResolvedValue({}),
   },
 }
 
@@ -38,6 +39,7 @@ describe('authentication routes', () => {
       const createArg = mockPrisma.user.create.mock.calls[0][0] as any
       expect(createArg.data.email).toBe('test@example.test')
       expect(await bcrypt.compare('good-password', createArg.data.password)).toBe(true)
+      expect(bcrypt.getRounds(createArg.data.password)).toBe(12)
       expect(response.body.user).not.toHaveProperty('password')
     })
 
@@ -54,11 +56,24 @@ describe('authentication routes', () => {
     it('rejects duplicate email addresses', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing' })
       const response = await request(app).post('/api/auth/register').send({
-        name: 'Test', email: 'test@example.test', password: 'pass',
+        name: 'Test', email: 'test@example.test', password: 'good-password',
       })
       expect(response.status).toBe(400)
       expect(response.body.message).toBe('user already exists')
       expect(mockPrisma.user.create).not.toHaveBeenCalled()
+    })
+
+    it('does not allow public registration to claim a configured administrator address', async () => {
+      const response = await request(app).post('/api/auth/register').send({
+        name: 'Untrusted', email: 'ADMIN@example.test', password: 'good-password',
+      })
+      expect(response.status).toBe(403)
+      expect(mockPrisma.user.create).not.toHaveBeenCalled()
+    })
+
+    it('rate limits repeated registration attempts from the same client', async () => {
+      const responses = await Promise.all(Array.from({ length: 5 }, () => request(app).post('/api/auth/register').send({})))
+      expect(responses.some((response) => response.status === 429)).toBe(true)
     })
   })
 
@@ -77,6 +92,9 @@ describe('authentication routes', () => {
       expect(response.body.token).toEqual(expect.any(String))
       expect(response.body.user).not.toHaveProperty('password')
       expect(response.body.user.isAdmin).toBe(false)
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'user-1' }, data: { password: expect.any(String) },
+      }))
     })
 
     it('rejects incorrect passwords and unknown accounts', async () => {
@@ -93,5 +111,20 @@ describe('authentication routes', () => {
       expect(response.status).toBe(400)
       expect(mockPrisma.user.findUnique).not.toHaveBeenCalled()
     })
+
+    it('rate limits repeated login attempts from the same client', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null)
+      const responses = await Promise.all(Array.from({ length: 8 }, () => request(app).post('/api/auth/login').send({
+        email: 'rate-limit@example.test', password: 'wrong-password',
+      })))
+      expect(responses.some((response) => response.status === 429)).toBe(true)
+    })
+  })
+
+  it('serves health and rejects unapproved browser origins', async () => {
+    expect((await request(app).get('/health')).status).toBe(200)
+    const blocked = await request(app).get('/health').set('Origin', 'https://unapproved.example')
+    expect(blocked.status).toBe(403)
+    expect(blocked.headers['access-control-allow-origin']).toBeUndefined()
   })
 })

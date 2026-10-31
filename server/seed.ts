@@ -1,5 +1,6 @@
 import { prisma } from "./config/prisma.js"
 import { Prisma } from "./generated/prisma/client.js"
+import { assertDevelopmentSeedAllowed } from "./config/runtimeConfig.js";
 
 const clientOrigin = (process.env.CLIENT_URL ?? "http://localhost:5173").replace(/\/$/, "");
 const productImage = (fileName: string) => `${clientOrigin}/images/products/${fileName}`;
@@ -7,8 +8,7 @@ const productImage = (fileName: string) => `${clientOrigin}/images/products/${fi
 
 const seedDB= async()=>{
   try{
-    await prisma.product.deleteMany({})
-    console.log("cleared existing products")
+    assertDevelopmentSeedAllowed(process.env);
     const products:Prisma.ProductCreateManyInput[]= [
       // 1. BRAKES — NIKAVI
       {
@@ -332,9 +332,17 @@ const seedDB= async()=>{
       },
     ];
 
-  await prisma.product.createMany({
-    data:products
-  })
+  for (const product of products) {
+    const existing = await prisma.product.findFirst({
+      where: { name: product.name, brand: product.brand },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.product.update({ where: { id: existing.id }, data: product });
+    } else {
+      await prisma.product.create({ data: product });
+    }
+  }
   console.log(`created ${products.length} products`)
   console.log(`seed completed sucessfully`)
   process.exit(0)

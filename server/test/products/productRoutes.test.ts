@@ -18,7 +18,7 @@ jest.mock('../../config/redis.js', () => ({ redisConnection: {} }))
 jest.mock('bullmq', () => ({ Queue: jest.fn().mockImplementation(() => ({ add: jest.fn() })), Worker: jest.fn().mockImplementation(() => ({ on: jest.fn() })) }))
 
 const { default: app } = require('../../app.js') as typeof import('../../app.js')
-const token = jwt.sign({ id: 'admin-1' }, 'jest-only-secret')
+const token = jwt.sign({ id: 'admin-1' }, 'jest-only-secret-with-more-than-thirty-two-characters')
 
 describe('product routes', () => {
   afterEach(() => jest.clearAllMocks())
@@ -68,8 +68,20 @@ describe('product routes', () => {
     expect(deleted.body.message).toBe('Deleted')
 
     mockPrisma.user.findUnique.mockResolvedValue({ id: 'customer-1', email: 'customer@example.test' })
-    const forbidden = await request(app).post('/api/products').set('Authorization', `Bearer ${jwt.sign({ id: 'customer-1' }, 'jest-only-secret')}`).send({ name: 'Pear' })
+    const forbidden = await request(app).post('/api/products').set('Authorization', `Bearer ${jwt.sign({ id: 'customer-1' }, 'jest-only-secret-with-more-than-thirty-two-characters')}`).send({ name: 'Pear' })
     expect(forbidden.status).toBe(403)
     expect(mockPrisma.product.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects non-product fields instead of passing them through to Prisma', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'admin-1', email: 'admin@example.test' })
+    const create = await request(app).post('/api/products').set({ Authorization: `Bearer ${token}` })
+      .send({ name: 'Pear', price: 5, id: 'attacker-controlled-id' })
+    const update = await request(app).put('/api/products/p1').set({ Authorization: `Bearer ${token}` })
+      .send({ password: 'unexpected' })
+    expect(create.status).toBe(400)
+    expect(update.status).toBe(400)
+    expect(mockPrisma.product.create).not.toHaveBeenCalled()
+    expect(mockPrisma.product.update).not.toHaveBeenCalled()
   })
 })

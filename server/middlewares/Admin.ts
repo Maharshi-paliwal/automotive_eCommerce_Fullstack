@@ -19,7 +19,7 @@ const admin=async (req:Request, res:Response, next:NextFunction)=>{
       .map((e) => e.trim().toLowerCase())
   : [];
 
-      if(adminEmails.includes(user.email.toLowerCase())){
+      if( user.email && adminEmails.includes(user.email.toLowerCase())){
         if(req.user) req.user.isAdmin=true;
         next()
       }else{
@@ -27,10 +27,9 @@ const admin=async (req:Request, res:Response, next:NextFunction)=>{
 
       }
 
-  }catch(error:any){
-    console.log(error)
+  }catch{
     return res.status(500).json({
-      message:"Admin verification failed", error:error.message
+      message:"Admin verification failed"
     })
   }
 }

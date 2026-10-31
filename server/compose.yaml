@@ -9,8 +9,7 @@ services:
       - .env
     environment:
       REDIS_HOST: redis
-      DbURL: postgresql://postgres:torquenextpass@database:5432/TORQUENEST?schema=public
-      DATABASE_URL: postgresql://postgres:torquenextpass@database:5432/TORQUENEST?schema=public
+      DbURL: ${DbURL}
     depends_on:
       - database
       - redis

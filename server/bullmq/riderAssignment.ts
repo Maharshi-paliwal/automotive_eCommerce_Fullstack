@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { Queue, Worker } from "bullmq";
+import { Queue} from "bullmq";
 import { prisma } from "../config/prisma.js";
 import { redisConnection } from "../config/redis.js";
 
@@ -18,7 +18,7 @@ export const riderAssignmentQueue = new Queue(RIDER_ASSIGNMENT_QUEUE, {
   },
 });
 
-/** Schedule an automatic rider assignment five minutes after an order is placed. */
+
 export const scheduleRiderAssignment = async (orderId: string) => {
   if (typeof orderId !== "string" || !orderId.trim()) {
     throw new Error("A valid order ID is required to schedule rider assignment");
@@ -101,23 +101,3 @@ export const assignRiderAfterDelay = async (orderId: string) => {
   }, { isolationLevel: "Serializable" });
 };
 
-export const riderAssignmentWorker = new Worker(
-  RIDER_ASSIGNMENT_QUEUE,
-  async (job) => {
-    if (job.name !== "auto-assign-rider") throw new Error(`Unknown rider assignment job: ${job.name}`);
-    return assignRiderAfterDelay(job.data.orderId);
-  },
-  { connection: redisConnection, concurrency: 5 },
-);
-
-riderAssignmentWorker.on("completed", (job, result) => {
-  console.log(`Rider assignment job ${job.id} completed:`, result);
-});
-
-riderAssignmentWorker.on("failed", (job, error) => {
-  console.error(`Rider assignment job ${job?.id} failed:`, error.message);
-});
-
-riderAssignmentWorker.on("error", (error) => {
-  console.error("Rider assignment worker error:", error);
-});

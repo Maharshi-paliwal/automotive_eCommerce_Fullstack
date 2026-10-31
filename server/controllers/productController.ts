@@ -67,22 +67,78 @@ export const getProduct=async (req:Request, res:Response)=>{
     res.json({product:{...product, discount}})
 }
 
+const productFields = new Set([
+  "name", "brand", "description", "price", "originalPrice", "image", "category", "unit",
+  "stock", "isOrganic", "iGenuine", "compatibleVehicles", "partNumber", "rating", "reviewCount",
+]);
+const productTextLimits: Record<string, number> = {
+  name: 200, brand: 100, description: 5000, image: 2000, category: 100, unit: 50, partNumber: 100,
+};
+const validateProductInput = (body: unknown, partial: boolean): Record<string, unknown> | null => {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const input = body as Record<string, unknown>;
+  const keys = Object.keys(input);
+  if (keys.length === 0 || keys.some((key) => !productFields.has(key))) return null;
+  if (!partial && (typeof input.name !== "string" || !input.name.trim() || typeof input.price !== "number" || !Number.isFinite(input.price) || input.price < 0)) return null;
+  for (const [field, maxLength] of Object.entries(productTextLimits)) {
+    const value = input[field];
+    if (value !== undefined && value !== null && (typeof value !== "string" || value.length > maxLength)) return null;
+  }
+  for (const field of ["price", "originalPrice", "rating"] as const) {
+    const value = input[field];
+    if (value !== undefined && value !== null && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) return null;
+  }
+  if (input.rating !== undefined && input.rating !== null && (input.rating as number) > 5) return null;
+  for (const field of ["stock", "reviewCount"] as const) {
+    const value = input[field];
+    if (value !== undefined && value !== null && (typeof value !== "number" || !Number.isInteger(value) || value < 0)) return null;
+  }
+  for (const field of ["isOrganic", "iGenuine"] as const) {
+    const value = input[field];
+    if (value !== undefined && value !== null && typeof value !== "boolean") return null;
+  }
+  if (input.compatibleVehicles !== undefined && (!Array.isArray(input.compatibleVehicles) || input.compatibleVehicles.length > 100 || input.compatibleVehicles.some((value) => typeof value !== "string" || value.length > 200))) return null;
+  return Object.fromEntries(keys.map((key) => [key, typeof input[key] === "string" ? (input[key] as string).trim() : input[key]]));
+};
+
 // create product api 
 export const createProduct=  async(req:Request, res:Response)=>{
-  const product= await prisma.product.create({data: { ...req.body, id: randomUUID() }})
+  const data = validateProductInput(req.body, false);
+  if (!data) return res.status(400).json({ message: "Invalid product data" });
+  const product= await prisma.product.create({data: { ...data, id: randomUUID() }})
   res.status(201).json({product})
 }
 
 // update product api 
 export const updateProduct=  async(req:Request, res:Response)=>{
-  const product= await prisma.product.update({where : {id:req.params.id}, data:req.body})
-  res.json({product})
+  const productId = req.params.id;
+
+if (typeof productId !== "string") {
+  return res.status(400).json({ message: "Invalid product ID" });
+}
+
+const data = validateProductInput(req.body, true);
+if (!data) return res.status(400).json({ message: "Invalid product data" });
+
+const product = await prisma.product.update({
+  where: { id: productId },
+  data,
+});
+res.json({ product });
 }
 
 //delete product
 export const deleteProduct=  async(req:Request, res:Response)=>{
-  await prisma.product.delete({where : {id:req.params.id}})
-  res.json({message:"Deleted"})
+const productId = req.params.id;
+
+if (typeof productId !== "string") {
+  return res.status(400).json({ message: "Invalid product ID" });
+}
+
+await prisma.product.delete({
+  where: { id: productId },
+});
+res.json({ message: "Deleted" });
 }
 
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { heroSectionData } from "../assets/assets";
 import { Loader2Icon, LockIcon, MailIcon, UserIcon } from "lucide-react";
 const Login = () => {
@@ -8,11 +8,30 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.SubmitEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => (window.location.href = "/"), 1000);
+    setError("");
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+      const response = await fetch(`${apiUrl}/auth/${isLoginState ? "login" : "register"}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isLoginState ? { email, password } : { name, email, password }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "Could not sign in.");
+      localStorage.setItem("token", result.token);
+      localStorage.setItem("user", JSON.stringify(result.user));
+      navigate("/");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not sign in.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -66,7 +85,7 @@ const Login = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {isLoginState && (
+            {!isLoginState && (
               <label htmlFor="" className="text-sm flex flex-col gap-1">
                 Name
                 <div className="relative">
@@ -120,6 +139,7 @@ const Login = () => {
                   />
                 </div>
               </label>
+              {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
               <button type="submit" className="flex-center w-full py-3 bg-sky-600 text-white font-semibold rounded-xl hover:bg-blue-900 transition-colors disabled:opacity-50" disabled={loading}>
                 {loading? <Loader2Icon className="animate-spin"/> : isLoginState ? "Sign In" : "Sign Up"}
               </button>

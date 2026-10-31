@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String  @id @db.Uuid
+  name      String?
+  email     String? @unique
+  password  String?
+  phone     String? @default("")
+  avatar    String? @default("")
+
+  addresses Address[]
+  orders    Order[]
+
+  createdAt DateTime? @default(now()) @db.Timestamp(3)
+  updatedAt DateTime? @updatedAt @db.Timestamp(3)
+}
+
+model Address {
+  id        String  @id @db.Uuid
+  userId    String? @db.Uuid
+  user      User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  label     String?
+  address   String?
+  city      String?
+  state     String?
+  zip       String?
+  isDefault Boolean? @default(false)
+  lat       Float?
+  lng       Float?
+
+  createdAt DateTime? @default(now()) @db.Timestamp(3)
+  updatedAt DateTime? @updatedAt @db.Timestamp(3)
+}
+
+model Product {
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String?
+  brand             String?
+  description       String?  @default("")
+  price             Float?
+  originalPrice     Float?   @default(0)
+  image             String?
+  category          String?
+  unit              String?  @default("piece")
+  stock             Int?     @default(0)
+  isOrganic         Boolean? @default(false)
+  iGenuine          Boolean? @default(false)
+  compatibleVehicles String[] @default([])
+  partNumber        String?
+  rating            Float?   @default(0)
+  reviewCount       Int?     @default(0)
+
+  createdAt DateTime? @default(now()) @db.Timestamp(3)
+  updatedAt DateTime? @updatedAt @db.Timestamp(3)
+}
+
+model Order {
+  id                String  @id @db.Uuid
+
+  userId            String? @db.Uuid
+  user              User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items             Json?
+  shippingAddress   Json?
+  paymentMethod     String?  @default("card")
+  subtotal          Float?
+  deliveryFee       Float?   @default(0)
+  tax               Float?
+  total             Float?
+  status            String?  @default("Placed")
+  statusHistory     Json?
+
+    deliveryPartnerId String? @db.Uuid
+  deliveryPartner DeliveryPartner? @relation(fields: [deliveryPartnerId], references: [id], onDelete: SetNull)
+
+  deliveryOtp  String?  @default("")
+  liveLocation Json?
+  isPaid       Boolean? @default(false)
+
+  createdAt DateTime? @default(now()) @db.Timestamp(3)
+  updatedAt DateTime? @updatedAt @db.Timestamp(3)
+}
+
+model DeliveryPartner {
+  id          String  @id @db.Uuid
+  name        String?
+  email       String? @unique
+  password    String?
+  phone       String?
+  avatar      String? @default("")
+  vehicleType String? @default("bike")
+  isActive    Boolean? @default(true)
+
+  orders Order[]
+
+  createdAt DateTime? @default(now()) @db.Timestamp(3)
+  updatedAt DateTime? @updatedAt @db.Timestamp(3)
+}

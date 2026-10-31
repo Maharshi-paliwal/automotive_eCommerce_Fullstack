@@ -1,5 +1,6 @@
-process.env.JWT_SECRET = 'jest-only-secret'
+process.env.JWT_SECRET = 'jest-only-secret-with-more-than-thirty-two-characters'
 process.env.ADMIN_EMAILS = 'admin@example.test'
+process.env.CLIENT_URL = 'http://localhost:5173'
 process.env.AWS_REGION = 'us-east-1'
 process.env.AWS_S3_BUCKET_NAME = 'jest-test-bucket'
 process.env.SMTP_USER = 'jest-user'

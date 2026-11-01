@@ -24,7 +24,7 @@ res.json({products:productsWithDiscount.slice(0,8)})
 
 //get /api/products
 
-  const getproducts = async(req:Request, res:Response) => {
+  export const getproducts = async(req:Request, res:Response) => {
   const {category, brand,search, minPrice, maxPrice, sort}=req.query
 
   const where:any= {}
@@ -34,7 +34,7 @@ res.json({products:productsWithDiscount.slice(0,8)})
   if(minPrice || maxPrice){
     where.price={}
     if(minPrice) where.price.gte=Number(minPrice)
-    if(maxPrice) where.price.gte=Number(maxPrice)
+    if(maxPrice) where.price.lte=Number(maxPrice)
     
   } 
   const orderBy:any ={}

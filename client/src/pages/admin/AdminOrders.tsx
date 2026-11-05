@@ -4,7 +4,8 @@ import toast from "react-hot-toast";
 import type { DeliveryPartner } from "../../types";
 // import Loading from "../../components/Loading";
 import Loader from "../../components/LoaderSecondary";
-import { dummyDashboardOrdersData, dummyDeliveryPartnerData } from "../../assets/assets";
+import { listDeliveryPartners } from "../../api/adminApi";
+import { adminOrders, assignPartner, updateOrderStatus } from "../../api/orderApi";
 
 export default function AdminOrders() {
 
@@ -19,13 +20,12 @@ export default function AdminOrders() {
     
 
     const fetchOrders = async () => {
-        setOrders(dummyDashboardOrdersData)
-        setTimeout(() => setLoading(false), 1000)
+        try { setOrders(await adminOrders()); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not load orders."); }
+        finally { setLoading(false); }
     };
 
     const fetchPartners = async () => {
-        setPartners(dummyDeliveryPartnerData as any)
-        setTimeout(() => setLoading(false), 1000)
+        try { setPartners(await listDeliveryPartners() as unknown as DeliveryPartner[]); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not load delivery partners."); }
     };
 
     useEffect(() => {
@@ -34,14 +34,14 @@ export default function AdminOrders() {
     }, []);
 
     const handleStatusChange = async (id: string, newStatus: string) => {
-        console.log(id, newStatus);
+        try { const updated = await updateOrderStatus(id, newStatus); setOrders((current) => current.map((order) => order._id === id ? updated : order)); }
+        catch (error) { toast.error(error instanceof Error ? error.message : "Could not update order status."); }
     };
 
     const handleAssign = async () => {
         if (!assignModal || !selectedPartner) return;
-        toast.success("Delivery partner assigned!");
-        setAssignModal(null);
-        setSelectedPartner("");
+        try { const updated = await assignPartner(assignModal, selectedPartner); setOrders((current) => current.map((order) => order._id === assignModal ? updated : order)); toast.success("Delivery partner assigned!"); setAssignModal(null); setSelectedPartner(""); }
+        catch (error) { toast.error(error instanceof Error ? error.message : "Could not assign delivery partner."); }
     };
 
     const statusOptions = ["Placed", "Confirmed", "Assigned", "Packed", "Out for Delivery", "Delivered", "Cancelled"];
@@ -136,7 +136,7 @@ export default function AdminOrders() {
                                 <p className="text-sm text-zinc-500 mb-4">No active delivery partners. Please onboard a partner first.</p>
                             ) : (
                                 <div className="space-y-2 mb-5 max-h-60 overflow-y-auto">
-                                    {partners.map((p) => (
+                                    {partners.filter((p) => p.isActive).map((p) => (
                                         <label key={p._id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selectedPartner === p._id ? "border-app-green bg-app-green/5" : "border-app-border hover:bg-app-cream"}`}>
                                             <input type="radio" name="partner" value={p._id} checked={selectedPartner === p._id} onChange={() => setSelectedPartner(p._id)} className="text-app-green" />
                                             <div className="size-8 rounded-full bg-app-green flex-center">

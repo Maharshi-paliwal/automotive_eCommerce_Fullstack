@@ -7,6 +7,8 @@ const mockOrderFindFirst = jest.fn<(...args: any[]) => Promise<any>>()
 const mockOrderUpdateMany = jest.fn<(...args: any[]) => Promise<any>>()
 const mockOrderUpdate = jest.fn<(...args: any[]) => Promise<any>>()
 const mockProductUpdateMany = jest.fn<(...args: any[]) => Promise<any>>()
+const mockProductFindUnique = jest.fn<(...args: any[]) => Promise<any>>()
+const mockMovementCreate = jest.fn<(...args: any[]) => Promise<any>>()
 const mockOutboxCreateMany = jest.fn<(...args: any[]) => Promise<any>>()
 const mockOutboxUpsert = jest.fn<(...args: any[]) => Promise<any>>()
 const mockOutboxFindMany = jest.fn<(...args: any[]) => Promise<any[]>>()
@@ -24,7 +26,8 @@ const mockQueueAdd = jest.fn<(...args: any[]) => Promise<any>>()
 
 const mockTx = {
   order: { findUnique: mockOrderFindUnique, findFirst: mockOrderFindFirst, updateMany: mockOrderUpdateMany, update: mockOrderUpdate },
-  product: { updateMany: mockProductUpdateMany },
+  product: { updateMany: mockProductUpdateMany, findUnique: mockProductFindUnique },
+  inventoryMovement: { create: mockMovementCreate },
   outboxEvent: { createMany: mockOutboxCreateMany, upsert: mockOutboxUpsert },
   refundAttempt: { findFirst: mockRefundAttemptFindFirst, findUnique: mockRefundAttemptFindUnique, create: mockRefundAttemptCreate, upsert: mockRefundAttemptUpsert, updateMany: mockRefundAttemptUpdateMany },
 }
@@ -91,6 +94,9 @@ const seedOrder = (status = 'Cancelled') => {
     refundAmount: 26500, refundIdempotencyKey: 'tn-refund-local-order-1', refundAttempts: 0,
   }
   mockState.stock = 8
+  mockProductFindUnique.mockImplementation(async () => ({ id: "product-1", stock: mockState.stock }))
+  mockProductUpdateMany.mockImplementation(async ({ data }: any) => { mockState.stock += data.stock.increment; return { count: 1 } })
+  mockMovementCreate.mockResolvedValue({})
   mockState.outbox = []
   mockState.refundAttempts = []
   mockTransaction.mockImplementation(async (operation: (tx: typeof mockTx) => Promise<any>) => operation(mockTx))
@@ -273,6 +279,25 @@ describe('payment worker reliability', () => {
     expect(mockState.order.status).toBe('Cancelled')
     expect(mockState.stock).toBe(10)
     expect(mockProductUpdateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('records skipped restoration once when unpaid expiry encounters unknown stock', async () => {
+    seedOrder('Placed')
+    mockState.order.razorpayPaymentId = null
+    mockState.order.paymentStatus = 'pending'
+    mockProductFindUnique.mockResolvedValue({ id: 'product-1', stock: null })
+
+    await processOrderJob({ name: 'expire-unpaid-order', data: { orderId: 'local-order-1' } } as any)
+    await processOrderJob({ name: 'expire-unpaid-order', data: { orderId: 'local-order-1' } } as any)
+
+    expect(mockState.order.status).toBe('Cancelled')
+    expect(mockState.stock).toBe(8)
+    expect(mockProductUpdateMany).not.toHaveBeenCalled()
+    expect(mockMovementCreate).toHaveBeenCalledTimes(1)
+    expect(mockMovementCreate).toHaveBeenCalledWith({ data: expect.objectContaining({
+      movementType: 'UNPAID_ORDER_EXPIRY_RESTORATION', quantityChange: null,
+      stockBefore: null, stockAfter: null, reason: 'Restoration skipped because stock was unknown',
+    }) })
   })
 
   it('retains a paid order in the database outbox when Redis queue delivery fails', async () => {

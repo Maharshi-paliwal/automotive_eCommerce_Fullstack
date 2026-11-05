@@ -117,8 +117,10 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Home } from "lucide-react";
 import type { Product } from "../types";
-import { dummyProducts } from "../assets/assets";
 import ProductCard from "../components/ProductCard";
+import { listProducts } from "../api/productApi";
+import { errorMessage } from "../api/http";
+import toast from "react-hot-toast";
 
 const SearchResults = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -136,18 +138,11 @@ const SearchResults = () => {
       return;
     }
 
-    const normalizedQuery = query.toLowerCase();
-
-    const filteredProducts = dummyProducts.filter((product) => {
-      return (
-        product.name.toLowerCase().includes(normalizedQuery) ||
-        product.brand.toLowerCase().includes(normalizedQuery) ||
-        product.category.toLowerCase().includes(normalizedQuery)
-      );
-    });
-
-    setProducts(filteredProducts);
-    setLoading(false);
+    let cancelled = false;
+    listProducts({ search: query }).then((items) => { if (!cancelled) setProducts(items); }).catch((error) => {
+      if (!cancelled) { setProducts([]); toast.error(errorMessage(error, "Could not search products.")); }
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [query]);
 
   return (

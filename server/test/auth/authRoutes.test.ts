@@ -97,6 +97,29 @@ describe('authentication routes', () => {
       }))
     })
 
+    it('sets administrator status from the hyphenated environment key', async () => {
+      const previousAdminEmails = process.env.ADMIN_EMAILS;
+      const previousHyphenatedAdminEmails = process.env['ADMIN-EMAILS'];
+      delete process.env.ADMIN_EMAILS;
+      process.env['ADMIN-EMAILS'] = ' ADMIN@example.test ';
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-1', name: 'Admin', email: 'admin@example.test', password: passwordHash, addresses: [],
+      })
+
+      try {
+        const response = await request(app).post('/api/auth/login').send({
+          email: 'admin@example.test', password: 'good-password',
+        })
+        expect(response.status).toBe(200)
+        expect(response.body.user.isAdmin).toBe(true)
+      } finally {
+        if (previousAdminEmails === undefined) delete process.env.ADMIN_EMAILS
+        else process.env.ADMIN_EMAILS = previousAdminEmails
+        if (previousHyphenatedAdminEmails === undefined) delete process.env['ADMIN-EMAILS']
+        else process.env['ADMIN-EMAILS'] = previousHyphenatedAdminEmails
+      }
+    })
+
     it('rejects incorrect passwords and unknown accounts', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
         id: 'user-1', email: 'test@example.test', password: passwordHash, addresses: [],

@@ -1,7 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useState, useEffect, useCallback } from "react";
 import type { Order } from "../types";
-import { dummyDashboardOrdersData } from "../assets/assets";
 import Loader from "../components/LoaderSecondary";
 
 import {
@@ -18,6 +17,9 @@ import {
 import OrderOTP from "../components/OrderTracking/OrderOTP";
 import LiveMap from "../components/OrderTracking/LiveMap";
 import OrderTimeLine from "../components/OrderTracking/OrderTimeLine";
+import { getOrder, getOrderLocation } from "../api/orderApi";
+import { errorMessage } from "../api/http";
+import toast from "react-hot-toast";
 
 const Ordertracking = () => {
   const { id } = useParams();
@@ -27,7 +29,7 @@ const Ordertracking = () => {
   const [loading, setLoading] = useState(true);
   const handleLoaderComplete = useCallback(() => setLoading(true), []);
 
-  const [liveLocation] = useState<{
+  const [liveLocation, setLiveLocation] = useState<{
     lat: number;
     lng: number;
   } | null>(null);
@@ -35,12 +37,13 @@ const Ordertracking = () => {
   useEffect(() => {
     setLoading(true);
 
-    const foundOrder = dummyDashboardOrdersData.find(
-      (o) => o._id === id
-    );
-
-    setOrder((foundOrder as Order) ?? null);
-    setLoading(false);
+    let cancelled = false;
+    if (!id) { setOrder(null); setLoading(false); return; }
+    getOrder(id).then((found) => { if (!cancelled) setOrder(found); }).catch((error) => {
+      if (!cancelled) { setOrder(null); if (!String(error).includes("Order not found")) toast.error(errorMessage(error, "Could not load order.")); }
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    getOrderLocation(id).then(({ liveLocation }) => { if (!cancelled && liveLocation && typeof liveLocation.lat === "number" && typeof liveLocation.lng === "number") setLiveLocation(liveLocation); }).catch(() => {});
+    return () => { cancelled = true; };
   }, [id]);
 
   if (loading) return <Loader onComplete={handleLoaderComplete} />;

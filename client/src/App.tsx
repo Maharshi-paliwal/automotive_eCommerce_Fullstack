@@ -20,6 +20,7 @@ import AdminProducts from "./pages/admin/AdminProducts"
 import AdminProductForm from "./pages/admin/AdminProductForm"
 import AdminOrders from "./pages/admin/AdminOrders"
 import AdminDeliveryPartners from "./pages/admin/AdminDeliveryPartners"
+import AdminInventory from "./pages/admin/AdminInventory"
 import DeliveryLogin from "./pages/delivery/DeliveryLogin"
 import DeliveryLayout from "./pages/delivery/DeliveryLayout"
 import DeliveryDashboard from "./pages/delivery/DeliveryDashboard"
@@ -54,6 +55,7 @@ const App = () => {
     <Route path="/admin" element={<AdminLayout/>}>
     <Route index element={<AdminDashboard/>}/>
     <Route path= 'products' element={<AdminProducts/>}/>
+    <Route path='inventory' element={<AdminInventory/>}/>
     <Route path= 'products/:id/edit' element={<AdminProductForm/>}/>
     <Route path= 'products/new' element={<AdminProductForm/>}/>
     <Route path= 'orders' element={<AdminOrders/>}/>

@@ -1,12 +1,15 @@
-import { afterEach, describe, expect, it, jest } from '@jest/globals'
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals'
 import jwt from 'jsonwebtoken'
 import request from 'supertest'
 
 const mockPrisma = {
+  $transaction: jest.fn<(...args: any[]) => Promise<any>>(),
+  inventoryMovement: { create: jest.fn<(...args: any[]) => Promise<any>>() },
   user: { findUnique: jest.fn<(...args: any[]) => Promise<any>>() },
   product: {
     findMany: jest.fn<(...args: any[]) => Promise<any[]>>(),
     findUnique: jest.fn<(...args: any[]) => Promise<any>>(),
+    updateMany: jest.fn<(...args: any[]) => Promise<any>>(),
     create: jest.fn<(...args: any[]) => Promise<any>>(),
     update: jest.fn<(...args: any[]) => Promise<any>>(),
     delete: jest.fn<(...args: any[]) => Promise<any>>(),
@@ -22,6 +25,7 @@ const token = jwt.sign({ id: 'admin-1' }, 'jest-only-secret-with-more-than-thirt
 
 describe('product routes', () => {
   afterEach(() => jest.clearAllMocks())
+  beforeEach(() => mockPrisma.$transaction.mockImplementation(async (operation: any) => operation({ ...mockPrisma, inventoryMovement: mockPrisma.inventoryMovement })))
 
   it('lists available flash deals with discounts', async () => {
     mockPrisma.product.findMany.mockResolvedValue([
@@ -71,6 +75,30 @@ describe('product routes', () => {
     const forbidden = await request(app).post('/api/products').set('Authorization', `Bearer ${jwt.sign({ id: 'customer-1' }, 'jest-only-secret-with-more-than-thirty-two-characters')}`).send({ name: 'Pear' })
     expect(forbidden.status).toBe(403)
     expect(mockPrisma.product.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('records unknown-to-known and known-to-unknown stock transitions without inventing a delta', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'admin-1', email: 'admin@example.test' })
+    mockPrisma.product.updateMany.mockResolvedValue({ count: 1 })
+    mockPrisma.product.findUnique
+      .mockResolvedValueOnce({ id: 'p1', stock: null })
+      .mockResolvedValueOnce({ id: 'p1', stock: 7 })
+      .mockResolvedValueOnce({ id: 'p1', stock: 7 })
+      .mockResolvedValueOnce({ id: 'p1', stock: null })
+    mockPrisma.inventoryMovement.create.mockResolvedValue({})
+    const auth = { Authorization: `Bearer ${token}` }
+
+    const becameKnown = await request(app).put('/api/products/p1').set(auth).send({ stock: 7 })
+    const becameUnknown = await request(app).put('/api/products/p1').set(auth).send({ stock: null })
+
+    expect(becameKnown.status).toBe(200)
+    expect(becameUnknown.status).toBe(200)
+    expect(mockPrisma.inventoryMovement.create).toHaveBeenNthCalledWith(1, { data: expect.objectContaining({
+      movementType: 'MANUAL_ADJUSTMENT', quantityChange: null, stockBefore: null, stockAfter: 7,
+    }) })
+    expect(mockPrisma.inventoryMovement.create).toHaveBeenNthCalledWith(2, { data: expect.objectContaining({
+      movementType: 'MANUAL_ADJUSTMENT', quantityChange: null, stockBefore: 7, stockAfter: null,
+    }) })
   })
 
   it('rejects non-product fields instead of passing them through to Prisma', async () => {

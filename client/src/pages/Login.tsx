@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { heroSectionData } from "../assets/assets";
 import { Loader2Icon, LockIcon, MailIcon, UserIcon } from "lucide-react";
+import { authenticate } from "../api/authApi";
 const Login = () => {
   const [isLoginState, setIsLoginState] = useState(true);
   const [name, setName] = useState("");
@@ -16,16 +17,7 @@ const Login = () => {
     setLoading(true);
     setError("");
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
-      const response = await fetch(`${apiUrl}/api/auth/${isLoginState ? "login" : "register"}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isLoginState ? { email, password } : { name, email, password }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message || "Could not sign in.");
-      localStorage.setItem("token", result.token);
-      localStorage.setItem("user", JSON.stringify(result.user));
+      await authenticate(isLoginState ? "login" : "register", isLoginState ? { email, password } : { name, email, password });
       navigate("/");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Could not sign in.");

@@ -6,7 +6,10 @@ import DeliveryOrderCard from "../../components/Delivery/DeliveryOrderCard";
 // import Loading from "../../components/Loading";
 import Loader from "../../components/LoaderSecondary";
 import type { Order } from "../../types";
-import { dummyDashboardOrdersData } from "../../assets/assets";
+import { myDeliveries, updateDeliveryStatus, completeDelivery, cancelDelivery } from "../../api/deliveryApi";
+import { errorMessage } from "../../api/http";
+import { socket } from "../../mapbox/socket";
+import toast from "react-hot-toast";
 
 export default function DeliveryDashboard() {
 
@@ -28,8 +31,9 @@ export default function DeliveryDashboard() {
 
     const fetchOrders = async () => {
         setLoading(true);
-        setOrders(dummyDashboardOrdersData as any);
-        setLoading(false);
+        try { setOrders(await myDeliveries(tab) as unknown as Order[]); }
+        catch (error) { toast.error(errorMessage(error, "Could not load deliveries.")); setOrders([]); }
+        finally { setLoading(false); }
     };
 
     useEffect(() => {
@@ -37,28 +41,52 @@ export default function DeliveryDashboard() {
     }, [tab]);
 
     const handleUpdateStatus = async (orderId: string, status: string) => {
-        console.log(orderId, status);
+        try { const updated = await updateDeliveryStatus(orderId, status); setOrders((current) => current.map((order) => order._id === orderId ? updated as Order : order)); }
+        catch (error) { toast.error(errorMessage(error, "Could not update delivery.")); }
     };
 
     const handleComplete = async () => {
         if (!otpModal || !otp) return;
         setSubmitting(true);
-        setTimeout(() => {
-            setSubmitting(false);
-            setOtpModal(null);
-            setOtp("");
-        }, 1000);
+        try { const updated = await completeDelivery(otpModal, otp); setOrders((current) => current.map((order) => order._id === otpModal ? updated as Order : order)); setOtpModal(null); setOtp(""); toast.success("Delivery completed."); }
+        catch (error) { toast.error(errorMessage(error, "Could not complete delivery.")); }
+        finally { setSubmitting(false); }
     };
 
     const handleCancel = async () => {
         if (!cancelModal) return;
         setSubmitting(true);
-        setTimeout(() => {
-            setSubmitting(false);
-            setCancelModal(null);
-            setCancelReason("");
-        }, 1000);
+        try { const updated = await cancelDelivery(cancelModal, cancelReason); setOrders((current) => current.map((order) => order._id === cancelModal ? updated as Order : order)); setCancelModal(null); setCancelReason(""); toast.success("Delivery cancelled."); }
+        catch (error) { toast.error(errorMessage(error, "Could not cancel delivery.")); }
+        finally { setSubmitting(false); }
     }
+
+    const activeOrderId = orders.find((item) => ["Assigned", "Packed", "Out for Delivery"].includes(item.status))?._id;
+
+    useEffect(() => {
+        if (!tracking) return;
+        if (!activeOrderId) { toast.error("There is no active delivery to share location for."); setTracking(false); return; }
+        if (!navigator.geolocation) { toast.error("Location is unavailable in this browser."); setTracking(false); return; }
+        const shownErrors = new Set<number>();
+        const watchId = navigator.geolocation.watchPosition(({ coords }) => {
+            if (!socket.connected) socket.connect();
+            socket.emit("rider:location", { orderId: activeOrderId, lat: coords.latitude, lng: coords.longitude });
+        }, (error) => {
+            const message = error.code === error.PERMISSION_DENIED
+                ? "Location permission denied. Please allow location access in your browser settings to share your location."
+                : error.code === error.TIMEOUT
+                    ? "Location request timed out. Sharing will continue trying."
+                    : error.code === error.POSITION_UNAVAILABLE
+                        ? "Your current location is temporarily unavailable. Sharing will continue trying."
+                        : error.message;
+            if (!shownErrors.has(error.code)) {
+                toast.error(message);
+                shownErrors.add(error.code);
+            }
+            if (error.code === error.PERMISSION_DENIED) setTracking(false);
+        }, { enableHighAccuracy: true, maximumAge: 5000 });
+        return () => { navigator.geolocation.clearWatch(watchId); socket.disconnect(); };
+    }, [tracking, activeOrderId]);
 
     return (
         <div className="space-y-4">

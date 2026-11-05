@@ -10,11 +10,11 @@ import type { Order } from "../types";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useCartStore } from "../zustand/UseCartStore";
-import {
-  dummyDashboardOrdersData,
-  statusColors,
-} from "../assets/assets";
+import { statusColors } from "../assets/assets";
 import Loader from "../components/LoaderSecondary";
+import { listOrders } from "../api/orderApi";
+import { errorMessage } from "../api/http";
+import toast from "react-hot-toast";
 
 const MyOrders = () => {
   const [myOrders, setMyOrders] = useState<Order[]>([]);
@@ -32,14 +32,7 @@ const MyOrders = () => {
     "Delivered",
   ];
 
-  const fetchOrders = async () => {
-    setMyOrders(dummyDashboardOrdersData as Order[]);
-    setLoading(false);
-  };
-
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
     const loadOrders = async () => {
       setLoading(true);
 
@@ -50,22 +43,15 @@ const MyOrders = () => {
         nextParams.delete("clearCart");
         setSearchParams(nextParams, { replace: true });
 
-        timeoutId = setTimeout(() => {
-          void fetchOrders();
-        }, 2000);
-      } else {
-        await fetchOrders();
       }
+      try { setMyOrders(await listOrders()); }
+      catch (error) { toast.error(errorMessage(error, "Could not load orders.")); setMyOrders([]); }
+      finally { setLoading(false); }
     };
 
     void loadOrders();
 
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    };
-  }, [activeTab, searchParams, setSearchParams, clearCart]);
+  }, [searchParams, setSearchParams, clearCart]);
 
   // Filter orders according to the selected tab.
   const filteredOrders =

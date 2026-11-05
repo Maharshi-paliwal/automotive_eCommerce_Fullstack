@@ -42,4 +42,34 @@ describe("admin delivery assignment concurrency", () => {
       where: { id: orderId, status: "Confirmed", deliveryPartnerId: null },
     }));
   });
+
+  it("allows an active partner to be assigned or reassigned while the order is Assigned", async () => {
+    mockOrderFindUnique
+      .mockResolvedValueOnce({ id: orderId, status: "Assigned", deliveryPartnerId: "11111111-1111-4111-8111-111111111111", statusHistory: [] })
+      .mockResolvedValueOnce({ id: orderId, status: "Assigned", deliveryPartnerId: partnerId });
+    mockPartnerFindUnique.mockResolvedValue({ id: partnerId, name: "Rider", isActive: true });
+    mockOrderUpdateMany.mockResolvedValue({ count: 1 });
+    const response = makeResponse();
+
+    await assignDeliverypartner({ params: { id: orderId }, body: { partnerId } } as any, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(mockOrderUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: orderId, status: "Assigned", deliveryPartnerId: "11111111-1111-4111-8111-111111111111" },
+      data: expect.objectContaining({ deliveryPartnerId: partnerId, status: "Assigned", deliveryOtp: expect.stringMatching(/^\d{6}$/) }),
+    }));
+  });
+
+  it.each(["Packed", "Out for Delivery"])("rejects reassignment after the order reaches %s", async (status) => {
+    mockOrderFindUnique.mockResolvedValue({
+      id: orderId, status, deliveryPartnerId: "11111111-1111-4111-8111-111111111111", statusHistory: [],
+    });
+    mockPartnerFindUnique.mockResolvedValue({ id: partnerId, name: "Rider", isActive: true });
+    const response = makeResponse();
+
+    await assignDeliverypartner({ params: { id: orderId }, body: { partnerId } } as any, response);
+
+    expect(response.statusCode).toBe(409);
+    expect(mockOrderUpdateMany).not.toHaveBeenCalled();
+  });
 });

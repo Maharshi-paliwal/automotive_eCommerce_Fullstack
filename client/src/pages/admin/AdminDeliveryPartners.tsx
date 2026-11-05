@@ -3,21 +3,23 @@ import { PlusIcon, XIcon, TruckIcon, PhoneIcon, MailIcon } from "lucide-react";
 import type { DeliveryPartner } from "../../types";
 // import Loading from "../../components/Loading";
 import Loader from "../../components/LoaderSecondary";
-import { dummyDeliveryPartnerData } from "../../assets/assets";
+import { createDeliveryPartner, listDeliveryPartners, updateDeliveryPartner } from "../../api/adminApi";
+import toast from "react-hot-toast";
 
 export default function AdminDeliveryPartners() {
     const [partners, setPartners] = useState<DeliveryPartner[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
-    const [saving] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", vehicleType: "bike" });
 
               const handleLoaderComplete = useCallback(() => setLoading(true), [])
 
 
     const fetchPartners = async () => {
-        setPartners(dummyDeliveryPartnerData as any)
-        setTimeout(() => setLoading(false), 1000)
+        try { setPartners(await listDeliveryPartners() as unknown as DeliveryPartner[]); }
+        catch (error) { toast.error(error instanceof Error ? error.message : "Could not load partners."); }
+        finally { setLoading(false); }
     };
 
     useEffect(() => {
@@ -25,12 +27,15 @@ export default function AdminDeliveryPartners() {
     }, []);
 
     const handleSubmit = async (e: React.SubmitEvent) => {
-        e.preventDefault();
-
+        e.preventDefault(); setSaving(true);
+        try { const partner = await createDeliveryPartner(form) as DeliveryPartner; setPartners((current) => [partner, ...current]); setShowForm(false); setForm({ name: "", email: "", password: "", phone: "", vehicleType: "bike" }); toast.success("Delivery partner created."); }
+        catch (error) { toast.error(error instanceof Error ? error.message : "Could not create partner."); }
+        finally { setSaving(false); }
     };
 
     const toggleActive = async (id: string, isActive = false) => {
-        console.log(id, isActive);
+        try { const partner = await updateDeliveryPartner(id, { isActive: !isActive }) as DeliveryPartner; setPartners((current) => current.map((item) => item._id === id ? partner : item)); }
+        catch (error) { toast.error(error instanceof Error ? error.message : "Could not update partner."); }
     };
 
     if (loading) return <Loader onComplete={handleLoaderComplete} />;
@@ -103,7 +108,7 @@ export default function AdminDeliveryPartners() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-app-green mb-1.5">Password</label>
-                                        <input type="password" required minLength={6} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" />
+                                            <input type="password" required minLength={8} maxLength={128} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">

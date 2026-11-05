@@ -6,6 +6,8 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import type { Address } from "../types";
+import { deleteAddress } from "../api/addressApi";
+import toast from "react-hot-toast";
 
 interface AddressCardProps {
   addr: Address;
@@ -18,9 +20,9 @@ const AddressCard = ({
   setAddresses,
   onEditHandler,
 }: AddressCardProps) => {
-  const handleDelete = (id: string) => {
-    // Temporary local deletion until the backend is connected.
-    setAddresses((previous) => previous.filter((item) => item._id !== id));
+  const handleDelete = async (id: string) => {
+    try { setAddresses(await deleteAddress(id)); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not delete address."); }
   };
 
   return (

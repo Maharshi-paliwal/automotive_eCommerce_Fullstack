@@ -10,7 +10,6 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { dummyAddressData } from "../assets/assets";
 import type { Address } from "../types";
 import { useCartStore } from "../zustand/UseCartStore";
 import toast from "react-hot-toast";
@@ -22,13 +21,16 @@ declare global {
 import CheckoutAddress from "../components/Checkout/CheckoutAddress";
 import CheckoutPayment from "../components/Checkout/CheckoutPayment";
 import CheckoutReview from "../components/Checkout/CheckoutReview";
+import { listAddresses } from "../api/addressApi";
+import { createOrder, verifyPayment } from "../api/orderApi";
+import { errorMessage } from "../api/http";
 
 const Checkout = () => {
   const navigate = useNavigate();
   const items = useCartStore((state) => state.items);
 
   const [step, setStep] = useState("address");
-  const [paymentMethod, setPaymentMethod] = useState("card");
+  const [paymentMethod, setPaymentMethod] = useState("upi");
   const [loading, setLoading] = useState(false);
 
   const [address, setAddress] = useState<Address>({
@@ -43,7 +45,8 @@ const Checkout = () => {
     lng: 0,
   });
 
-  const user = { addresses: dummyAddressData };
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const user = { addresses };
   const currency = import.meta.env.VITE_CURRENCY_SYMBOL || "₹";
 
   // Calculate totals directly from cart items.
@@ -54,8 +57,8 @@ const Checkout = () => {
   );
 
   const deliveryFee = subtotal > 2000 ? 0 : 49;
-  const tax = subtotal * 0.08;
-  const total = subtotal + deliveryFee + tax;
+  const tax = Math.round(subtotal * 0.08 * 100) / 100;
+  const total = Math.round((subtotal + deliveryFee + tax) * 100) / 100;
 
   const itemCount = items.reduce(
     (count, item) => count + item.quantity,
@@ -91,13 +94,14 @@ const Checkout = () => {
 
   // Set the default saved address.
   useEffect(() => {
-    const defaultAddress =
-      dummyAddressData.find((item) => item.isDefault) ??
-      dummyAddressData[0];
-
-    if (defaultAddress) {
-      setAddress(defaultAddress);
-    }
+    let cancelled = false;
+    listAddresses().then((saved) => {
+      if (cancelled) return;
+      setAddresses(saved);
+      const preferred = saved.find((item) => item.isDefault) ?? saved[0];
+      if (preferred) setAddress(preferred);
+    }).catch((error) => toast.error(errorMessage(error, "Could not load addresses.")));
+    return () => { cancelled = true; };
   }, []);
 
   const goToStep = (nextStep: string) => {
@@ -109,16 +113,8 @@ const Checkout = () => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem("token");
-      if (!token) throw new Error("Please sign in before placing an order.");
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
-      const response = await fetch(`${apiUrl}/api/orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ items: items.map(({ product, quantity }) => ({ product: product._id, quantity })), shippingAddress: address, paymentMethod }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message || "Could not create your order.");
+      if (!localStorage.getItem("token")) throw new Error("Please sign in before placing an order.");
+      const result = await createOrder({ items: items.map(({ product, quantity }) => ({ product: product._id, quantity })), shippingAddress: address, paymentMethod: paymentMethod === "cash" ? "cash" : "card" });
 
       if (paymentMethod === "cash") {
         useCartStore.getState().clearCart();
@@ -146,13 +142,7 @@ const Checkout = () => {
         order_id: result.payment.id,
         handler: async (payment: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
           try {
-            const verified = await fetch(`${apiUrl}/api/orders/payment/verify`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-              body: JSON.stringify(payment),
-            });
-            const verification = await verified.json();
-            if (!verified.ok) throw new Error(verification.message || "Payment verification failed.");
+            await verifyPayment(payment);
             useCartStore.getState().clearCart();
             navigate("/orders");
           } catch (error) {
@@ -162,10 +152,24 @@ const Checkout = () => {
         },
         modal: { ondismiss: () => setLoading(false) },
         theme: { color: "#1B3022" },
+        ...(paymentMethod === "upi" ? {
+          config: {
+            display: {
+              blocks: {
+                preferred: {
+                  name: "Pay using UPI",
+                  instruments: [{ method: "upi" }],
+                },
+              },
+              sequence: ["block.preferred"],
+              preferences: { show_default_blocks: false },
+            },
+          },
+        } : {}),
       });
       gateway.open();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not place your order.");
+      toast.error(errorMessage(error, "Could not place your order."));
       setLoading(false);
     } finally {
       if (paymentMethod === "cash") setLoading(false);

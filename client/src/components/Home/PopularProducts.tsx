@@ -1,14 +1,14 @@
 import { useState , useEffect} from "react"
 import type { Product } from "../../types"
-import { dummyProducts } from "../../assets/assets"
 import { ArrowRightIcon } from "lucide-react"
 import { Link } from "react-router-dom"
 import ProductCard from "../ProductCard"
+import { listProducts } from "../../api/productApi"
 const PopularProducts = () => {
   const [Product, setProduct] = useState<Product[]>([])
 
   useEffect(()=>{
-    setProduct(dummyProducts.slice(0,10))
+    listProducts({}).then((items) => setProduct(items.slice(0, 10))).catch(() => setProduct([]))
 
   },[])
   return (

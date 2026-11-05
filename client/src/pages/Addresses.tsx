@@ -2,11 +2,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import type { Address } from "../types";
-import { dummyAddressData } from "../assets/assets";
 import { MapPinIcon, PlusIcon } from "lucide-react";
 import Loader from "../components/LoaderSecondary";
 import AddressCard from "../components/AddressCard";
 import AddressForm from "../components/AddressForm";
+import { addAddress, listAddresses, updateAddress } from "../api/addressApi";
+import { errorMessage } from "../api/http";
+import toast from "react-hot-toast";
 
 const emptyForm = {
   label: "",
@@ -15,6 +17,8 @@ const emptyForm = {
   state: "",
   zip: "",
   isDefault: false,
+  lat: null as number | null,
+  lng: null as number | null,
 };
 
 const Addresses = () => {
@@ -31,38 +35,21 @@ const Addresses = () => {
     setEditingId(null);
   };
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
-    if (editingId) {
-      setAddresses((previous) =>
-        previous.map((address) =>
-          address._id === editingId
-            ? { ...address, ...form }
-            : form.isDefault
-              ? { ...address, isDefault: false }
-              : address
-        )
-      );
-    } else {
-      const newAddress = {
-        ...form,
-        _id: crypto.randomUUID(),
-      } as Address;
-
-      setAddresses((previous) => {
-        const updated = form.isDefault
-          ? previous.map((address) => ({
-              ...address,
-              isDefault: false,
-            }))
-          : previous;
-
-        return [...updated, newAddress];
-      });
+    const { lat, lng } = form;
+    if (lat === null || lng === null) {
+        toast.error("Select your delivery location on the map before saving.");
+        return;
     }
-
-    resetForm();
+    try {
+      if (editingId) setAddresses(await updateAddress(editingId, { ...form, lat, lng }));
+      else {
+        const created = await addAddress({ ...form, lat, lng });
+        setAddresses((current) => [...current, created]);
+      }
+      resetForm();
+    } catch (error) { toast.error(errorMessage(error, "Could not save address.")); }
   };
 
   const onEditHandler = (address: Address) => {
@@ -73,6 +60,8 @@ const Addresses = () => {
       state: address.state,
       zip: address.zip,
       isDefault: address.isDefault,
+      lat: address.lat,
+      lng: address.lng,
     });
 
     setEditingId(address._id);
@@ -80,12 +69,11 @@ const Addresses = () => {
   };
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setAddresses(dummyAddressData);
-      setLoading(false);
-    }, 500);
-
-    return () => window.clearTimeout(timer);
+    let cancelled = false;
+    listAddresses().then((saved) => { if (!cancelled) setAddresses(saved); })
+      .catch((error) => { if (!cancelled) toast.error(errorMessage(error, "Could not load addresses.")); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   return (

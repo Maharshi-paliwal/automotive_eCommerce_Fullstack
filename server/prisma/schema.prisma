@@ -17,6 +17,10 @@ model User {
 
   addresses Address[]
   orders    Order[]
+  inventoryMovements InventoryMovement[] @relation("InventoryActor")
+  notifications Notification[]
+  pushSubscriptions PushSubscription[]
+  complaints Complaint[]
 
   createdAt DateTime? @default(now()) @db.Timestamp(3)
   updatedAt DateTime? @updatedAt @db.Timestamp(3)
@@ -59,6 +63,7 @@ model Product {
   partNumber        String?
   rating            Float?   @default(0)
   reviewCount       Int?     @default(0)
+  inventoryMovements InventoryMovement[]
 
   createdAt DateTime? @default(now()) @db.Timestamp(3)
   updatedAt DateTime? @updatedAt @db.Timestamp(3)
@@ -102,6 +107,7 @@ model Order {
   refundLastError String?
 
   refundAttemptRecords RefundAttempt[]
+  inventoryMovements InventoryMovement[]
 
   createdAt DateTime? @default(now()) @db.Timestamp(3)
   updatedAt DateTime? @updatedAt @db.Timestamp(3)
@@ -168,4 +174,97 @@ model DeliveryPartner {
 
   createdAt DateTime? @default(now()) @db.Timestamp(3)
   updatedAt DateTime? @updatedAt @db.Timestamp(3)
+}
+
+enum InventoryMovementType {
+  INITIAL_STOCK
+  ORDER_DEDUCTION
+  MANUAL_ADJUSTMENT
+  ORDER_CANCELLATION_RESTORATION
+  UNPAID_ORDER_EXPIRY_RESTORATION
+}
+
+model InventoryMovement {
+  id               String               @id @default(uuid()) @db.Uuid
+  productId        String?              @db.Uuid
+  product          Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)
+  movementType     InventoryMovementType
+  quantityChange   Int?
+  stockBefore      Int?
+  stockAfter       Int?
+  reason           String
+  adminActorId     String?              @db.Uuid
+  adminActor       User?                @relation("InventoryActor", fields: [adminActorId], references: [id], onDelete: SetNull)
+  relatedOrderId   String?              @db.Uuid
+  relatedOrder     Order?               @relation(fields: [relatedOrderId], references: [id], onDelete: SetNull)
+  createdAt        DateTime             @default(now()) @db.Timestamp(3)
+
+  @@index([productId, createdAt])
+  @@index([relatedOrderId, movementType])
+}
+
+enum NotificationType {
+  LOW_STOCK
+  PAYMENT_FAILED
+  CUSTOMER_COMPLAINT
+}
+
+model Notification {
+  id              String           @id @default(uuid()) @db.Uuid
+  userId          String           @db.Uuid
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            NotificationType
+  title           String
+  message         String
+  referenceType   String?
+  referenceId     String?
+  readAt          DateTime?        @db.Timestamp(3)
+  idempotencyKey  String
+  createdAt       DateTime         @default(now()) @db.Timestamp(3)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @db.Timestamp(3)
+  updatedAt DateTime @updatedAt @db.Timestamp(3)
+}
+
+enum ComplaintCategory {
+  ORDER
+  PRODUCT
+  PAYMENT
+  DELIVERY
+  OTHER
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+model Complaint {
+  id             String            @id @default(uuid()) @db.Uuid
+  userId         String            @db.Uuid
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category       ComplaintCategory
+  subject        String
+  description    String
+  status         ComplaintStatus   @default(OPEN)
+  idempotencyKey String
+  createdAt      DateTime          @default(now()) @db.Timestamp(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamp(3)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
 }

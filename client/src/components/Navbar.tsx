@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { heroSectionData } from "../assets/assets";
 import { useCartStore } from "../zustand/UseCartStore";
@@ -15,13 +15,15 @@ import {
   Warehouse,
   XIcon,
 } from "lucide-react";
+import { logout } from "../api/authApi";
+import toast from "react-hot-toast";
+import NotificationCenter from "./NotificationCenter";
+import { removeCurrentUserPushSubscription } from "../api/pushSubscriptionLifecycle";
 
 const Navbar = () => {
-  const user: any = {
-    name: "abcd",
-    email: "email@gmail.com",
-    isAdmin: true,
-  };
+  const [user, setUser] = useState<any>(() => {
+    try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
+  });
 
   const cartCount = useCartStore((state) =>
     state.items.reduce((total, item) => total + item.quantity, 0)
@@ -35,6 +37,15 @@ const Navbar = () => {
 
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const refreshUser = (event: StorageEvent) => {
+      if (event.key !== "user" && event.key !== "token") return;
+      try { setUser(JSON.parse(localStorage.getItem("user") || "null")); } catch { setUser(null); }
+    };
+    window.addEventListener("storage", refreshUser);
+    return () => window.removeEventListener("storage", refreshUser);
+  }, []);
+
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
   e.preventDefault();
 
@@ -47,6 +58,19 @@ const Navbar = () => {
 };
 
   const closeMobileMenu = () => setMobileMenuOpen(false);
+  const handleLogout = async () => {
+    if (user?.isAdmin && typeof user.id === "string") {
+      try {
+        await removeCurrentUserPushSubscription(user.id);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not fully remove browser notifications.");
+      }
+    }
+    logout();
+    setUser(null);
+    setUserMenuOpen(false);
+    navigate("/");
+  };
 
   return (
     <nav className="sticky top-0 z-50 border-b border-app-border bg-white">
@@ -115,6 +139,10 @@ const Navbar = () => {
         <div className="ml-1 flex shrink-0 items-center gap-1 sm:gap-2">
 
           {/* Cart */}
+          {user?.isAdmin && localStorage.getItem("token") && user.id && (
+            <NotificationCenter key={`${user.id}:${localStorage.getItem("token")}`} userId={user.id} />
+          )}
+
           <button
             type="button"
             aria-label={`Open shopping cart, ${cartCount} items`}
@@ -205,7 +233,7 @@ const Navbar = () => {
                       <div className="border-t border-app-border pt-1">
                         <button
                           type="button"
-                          onClick={() => setUserMenuOpen(false)}
+                          onClick={handleLogout}
                           className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-app-error transition-colors hover:bg-red-50"
                         >
                           <LogOutIcon size={16} />

@@ -10,11 +10,14 @@ const mockPrisma = {
   $transaction: jest.fn<(...args: any[]) => Promise<any>>(),
 };
 const mockProductUpdateMany = jest.fn<(...args: any[]) => Promise<any>>();
+const mockProductFindUnique = jest.fn<(...args: any[]) => Promise<any>>();
+const mockMovementCreate = jest.fn<(...args: any[]) => Promise<any>>();
 const mockRefundAttemptCreate = jest.fn<(...args: any[]) => Promise<any>>();
 const mockOutboxCreate = jest.fn<(...args: any[]) => Promise<any>>();
 const mockTx = {
-  order: { updateMany: mockPrisma.order.updateMany, findUnique: mockPrisma.order.findUnique },
-  product: { updateMany: mockProductUpdateMany },
+  order: { findFirst: mockPrisma.order.findFirst, updateMany: mockPrisma.order.updateMany, findUnique: mockPrisma.order.findUnique },
+  product: { updateMany: mockProductUpdateMany, findUnique: mockProductFindUnique },
+  inventoryMovement: { create: mockMovementCreate },
   refundAttempt: { create: mockRefundAttemptCreate },
   outboxEvent: { create: mockOutboxCreate },
 };
@@ -68,6 +71,8 @@ describe("delivery partner order mutations", () => {
     mockPrisma.order.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 1 });
     mockPrisma.order.findUnique.mockResolvedValue({ id: orderId, status: "Cancelled", paymentStatus: "refund_pending", refundStatus: "pending" });
     mockProductUpdateMany.mockResolvedValue({ count: 1 });
+    mockProductFindUnique.mockResolvedValue({ id: "55555555-5555-4555-8555-555555555555", stock: 3 });
+    mockMovementCreate.mockResolvedValue({});
     mockRefundAttemptCreate.mockResolvedValue({});
     mockOutboxCreate.mockResolvedValue({});
 
@@ -79,13 +84,40 @@ describe("delivery partner order mutations", () => {
     expect(first.statusCode).toBe(200);
     expect(first.body.order).toMatchObject({ paymentStatus: "refund_pending", refundStatus: "pending" });
     expect(repeated.statusCode).toBe(409);
-    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(2);
     expect(mockProductUpdateMany).toHaveBeenCalledTimes(1);
     expect(mockRefundAttemptCreate).toHaveBeenCalledTimes(1);
     expect(mockOutboxCreate).toHaveBeenCalledTimes(1);
     expect(mockOutboxCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ jobName: "refund-expired-payment", payload: { orderId, attemptNumber: 1 } }),
     }));
+  });
+
+  it("records skipped restoration for unknown stock once when a delivery is cancelled", async () => {
+    const activeOrder = {
+      id: orderId, deliveryPartnerId: partnerId, status: "Assigned", statusHistory: [], deliveryOtp: "123456",
+      items: [{ product: "55555555-5555-4555-8555-555555555555", quantity: 2 }],
+      paymentMethod: "cash", isPaid: false,
+    };
+    mockPrisma.order.findFirst.mockResolvedValueOnce(activeOrder).mockResolvedValueOnce({ ...activeOrder, status: "Cancelled" });
+    mockPrisma.order.updateMany.mockResolvedValueOnce({ count: 1 });
+    mockPrisma.order.findUnique.mockResolvedValue({ id: orderId, status: "Cancelled" });
+    mockProductFindUnique.mockResolvedValue({ id: "55555555-5555-4555-8555-555555555555", stock: null });
+    mockMovementCreate.mockResolvedValue({});
+
+    const first = makeResponse();
+    await cancelDelivery(requestFor() as any, first);
+    const repeated = makeResponse();
+    await cancelDelivery(requestFor() as any, repeated);
+
+    expect(first.statusCode).toBe(200);
+    expect(repeated.statusCode).toBe(409);
+    expect(mockProductUpdateMany).not.toHaveBeenCalled();
+    expect(mockMovementCreate).toHaveBeenCalledTimes(1);
+    expect(mockMovementCreate).toHaveBeenCalledWith({ data: expect.objectContaining({
+      movementType: "ORDER_CANCELLATION_RESTORATION", quantityChange: null,
+      stockBefore: null, stockAfter: null, reason: "Restoration skipped because stock was unknown",
+    }) });
   });
 
   it("returns 404 for a missing assigned order instead of dereferencing it", async () => {
@@ -98,7 +130,7 @@ describe("delivery partner order mutations", () => {
 
   it("rejects invalid OTP and out-of-order delivery status transitions", async () => {
     mockPrisma.order.findFirst.mockResolvedValue({
-      id: orderId, deliveryPartnerId: partnerId, status: "Assigned", statusHistory: [], deliveryOtp: "123456",
+      id: orderId, deliveryPartnerId: partnerId, status: "Out for Delivery", statusHistory: [], deliveryOtp: "123456",
     });
     const otpResponse = makeResponse();
     await completeDelivery(requestFor({ otp: "000000" }) as any, otpResponse);
@@ -108,5 +140,35 @@ describe("delivery partner order mutations", () => {
     await updateDeliveryStatus(requestFor({ status: "Out for Delivery" }) as any, statusResponse);
     expect(statusResponse.statusCode).toBe(400);
     expect(mockPrisma.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each(["Assigned", "Packed"])("rejects a correct OTP while the order is %s", async (status) => {
+    mockPrisma.order.findFirst.mockResolvedValue({
+      id: orderId, deliveryPartnerId: partnerId, status, statusHistory: [], deliveryOtp: "123456",
+    });
+    const response = makeResponse();
+
+    await completeDelivery(requestFor({ otp: "123456" }) as any, response);
+
+    expect(response.statusCode).toBe(409);
+    expect(mockPrisma.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("completes an Out for Delivery order with the matching OTP", async () => {
+    mockPrisma.order.findFirst.mockResolvedValue({
+      id: orderId, deliveryPartnerId: partnerId, status: "Out for Delivery", statusHistory: [], deliveryOtp: "123456",
+    });
+    mockPrisma.order.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.order.findUnique.mockResolvedValue({ id: orderId, status: "Delivered", deliveryOtp: "" });
+    const response = makeResponse();
+
+    await completeDelivery(requestFor({ otp: "123456" }) as any, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.order.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: orderId, deliveryPartnerId: partnerId, status: "Out for Delivery", deliveryOtp: "123456" },
+      data: expect.objectContaining({ status: "Delivered", deliveryOtp: "" }),
+    }));
+    expect(response.body.order).not.toHaveProperty("deliveryOtp");
   });
 });

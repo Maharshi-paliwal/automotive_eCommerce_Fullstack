@@ -3,6 +3,11 @@ import {prisma} from '../config/prisma.js'
 import bcrypt from 'bcrypt'
 import { randomInt } from 'node:crypto'
 
+const safeDeliveryPartner = <T extends { password?: unknown }>(partner: T) => {
+  const { password: _password, ...safePartner } = partner
+  return safePartner
+}
+
 
 
 export const getAdminStats = async (req: Request, res: Response) => {
@@ -71,7 +76,7 @@ export const getDeliveryPartners= async(req:Request, res:Response)=>{
   const partners= await prisma.deliveryPartner.findMany(
     {orderBy:{createdAt:"desc"}}
   )
-  res.json({partners})
+  res.json({partners: partners.map(safeDeliveryPartner)})
 }
 
 //create delivery partner profile
@@ -87,7 +92,7 @@ export const createDeliveryPartner=async(req:Request, res:Response)=>{
   const partner=await prisma.deliveryPartner.create({
     data:{name:name.trim(),email:email.trim().toLowerCase(),password:hashedPassword,phone:phone.trim(),vehicleType}
   })
-   return res.status(201).json({partner})
+   return res.status(201).json({partner: safeDeliveryPartner(partner)})
 }
 
 //update delivery partner
@@ -120,12 +125,13 @@ export const updateDeliverypartner=async(req:Request, res:Response)=>{
       where:{id:req.params.id as string},
       data
     })
-    res.json({partner})
+    res.json({partner: safeDeliveryPartner(partner)})
   }catch(err){
     res.status(404).json({message: "partner not found"})
   }
   
 }
+
 
 //assign delivery partner
 export const assignDeliverypartner=async(req:Request, res:Response)=>{
@@ -144,7 +150,8 @@ export const assignDeliverypartner=async(req:Request, res:Response)=>{
     where:{id:partnerId}
   })
   if (!partner || !partner.isActive) return res.status(404).json({message:"Active delivery partner not found"})
-  if (order.status === "Delivered" || order.status === "Cancelled") return res.status(409).json({message:"Order cannot be assigned in its current status"})
+  const isInitialAssignment = !order.deliveryPartnerId && (order.status === "Placed" || order.status === "Confirmed")
+  if (order.status !== "Assigned" && !isInitialAssignment) return res.status(409).json({message:"Order can only be assigned or reassigned while Assigned"})
   const otp=String(randomInt(100000, 1000000))
   const history :any[]= Array.isArray(order.statusHistory)? [...order.statusHistory] :[]
   const status = order.status === "Placed" || order.status === "Confirmed" ? "Assigned" : order.status

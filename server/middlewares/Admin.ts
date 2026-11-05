@@ -1,6 +1,7 @@
 import { NextFunction } from "express";
 import type {Request, Response} from 'express'
 import {prisma} from '../config/prisma.js'
+import { getAdminEmails } from "../config/adminEmails.js";
 
 const admin=async (req:Request, res:Response, next:NextFunction)=>{
   try{
@@ -13,13 +14,9 @@ const admin=async (req:Request, res:Response, next:NextFunction)=>{
     if(!user){
       return res.status(401).json({message:"user not found"})
     }
-     const adminEmails = process.env.ADMIN_EMAILS
-  ? process.env.ADMIN_EMAILS
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-  : [];
+      const adminEmails = getAdminEmails();
 
-      if( user.email && adminEmails.includes(user.email.toLowerCase())){
+      if( user.email && adminEmails.includes(user.email.trim().toLowerCase())){
         if(req.user) req.user.isAdmin=true;
         next()
       }else{

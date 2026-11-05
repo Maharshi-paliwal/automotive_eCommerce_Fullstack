@@ -4,6 +4,7 @@ import { prisma } from "../config/prisma.js";
 import bcrypt from "bcrypt"
 import jwt from 'jsonwebtoken'
 import { getJwtSecret } from "../config/runtimeConfig.js";
+import { getAdminEmails } from "../config/adminEmails.js";
 
 const PASSWORD_ROUNDS = 12;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -16,9 +17,7 @@ return jwt.sign({id}, getJwtSecret(), {expiresIn:"15d", algorithm:"HS256"})
 
 const getAdminStatus=(email:string | null | undefined):boolean=>{
   if(!email) return false;
-  const adminEmails=process.env.ADMIN_EMAILS ?process.env.ADMIN_EMAILS.split(",").map((e)=>e.trim().toLowerCase()):[]
-
-  return adminEmails.includes(email.toLowerCase())
+  return getAdminEmails().includes(email.trim().toLowerCase())
 }
 
 export const register=async(req:Request, res:Response)=>{
@@ -32,7 +31,7 @@ export const register=async(req:Request, res:Response)=>{
     })
   }
 
-  const adminEmails = (process.env.ADMIN_EMAILS ?? "").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+  const adminEmails = getAdminEmails();
   if (adminEmails.includes(email)) {
     return res.status(403).json({ message: "This email requires trusted account provisioning" });
   }

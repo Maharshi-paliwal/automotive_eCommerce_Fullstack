@@ -16,16 +16,19 @@ import {
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import type { Product } from "../types";
-import { dummyProducts } from "../assets/assets";
 import Loader from "../components/LoaderSecondary";
 import { useCartStore } from "../zustand/UseCartStore";
 import DummyReviewsSection from "../assets/DummyReviewsSection";
+import { getProduct, listProducts } from "../api/productApi";
+import { errorMessage } from "../api/http";
+import toast from "react-hot-toast";
 
 const ProductPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const [product, setProduct] = useState<Product | null>(null);
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const handleLoaderComplete = useCallback(() => setLoading(true), []);
   const [isImageExpanded, setIsImageExpanded] = useState(false);
@@ -44,13 +47,18 @@ const ProductPage = () => {
     setLoading(true);
     setIsImageExpanded(false);
 
-    const foundProduct = dummyProducts.find(
-      (item) => item._id === id
-    );
-
-    setProduct(foundProduct ?? null);
-    setLoading(false);
+    let cancelled = false;
+    if (!id) { setProduct(null); setLoading(false); return; }
+    getProduct(id).then((foundProduct) => { if (!cancelled) setProduct(foundProduct); }).catch((error) => {
+      if (!cancelled) { setProduct(null); if (!(error instanceof Error && error.message === "product not found")) toast.error(errorMessage(error, "Could not load product.")); }
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [id]);
+
+  useEffect(() => {
+    if (!product) return;
+    listProducts({ category: product.category }).then((items) => setRelatedProducts(items.filter((item) => item._id !== product._id).slice(0, 4))).catch(() => setRelatedProducts([]));
+  }, [product]);
 
   if (loading) return <Loader onComplete={handleLoaderComplete} />;
 
@@ -131,14 +139,6 @@ const ProductPage = () => {
     // the quantity reaches zero, as in the cart sidebar.
     updateQuantity(product._id, cartQuantity - 1);
   };
-
-  const relatedProducts = dummyProducts
-    .filter(
-      (item) =>
-        item._id !== product._id &&
-        item.category === product.category
-    )
-    .slice(0, 4);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-orange-50/70 via-slate-50 to-rose-50/50">

@@ -1,10 +1,11 @@
 import { useState, useEffect , useCallback} from "react";
 import { Link } from "react-router-dom";
-import { PlusIcon, EditIcon, XIcon } from "lucide-react";
+import { PlusIcon, EditIcon, Boxes } from "lucide-react";
 import type { Product } from "../../types";
 // import Loading from "../../components/Loading";
 import Loader from "../../components/LoaderSecondary";
-import { dummyProducts } from "../../assets/assets";
+import { listProducts } from "../../api/productApi";
+import toast from "react-hot-toast";
 
 export default function AdminProducts() {
 
@@ -17,20 +18,14 @@ export default function AdminProducts() {
 
 
     const fetchProducts = async () => {
-        setProducts(dummyProducts);
-        setTimeout(() => {
-            setLoading(false);
-        }, 1000);
+        try { setProducts(await listProducts({})); }
+        catch (error) { toast.error(error instanceof Error ? error.message : "Could not load products."); }
+        finally { setLoading(false); }
     };
 
     useEffect(() => {
         fetchProducts();
     }, []);
-
-    const handleMarkOutOfStock = async (id: string, name: string) => {
-        if (!window.confirm(`Are you sure you want to mark "${name}" as out of stock?`)) return;
-        console.log(id);
-    };
 
     if (loading) return <Loader onComplete={handleLoaderComplete} />
 
@@ -81,9 +76,9 @@ export default function AdminProducts() {
                                                 <Link to={`/admin/products/${product._id}/edit`} className="p-2 text-zinc-500 hover:text-app-orange bg-zinc-100 hover:bg-orange-50 rounded-lg transition-colors">
                                                     <EditIcon className="size-4" />
                                                 </Link>
-                                                <button onClick={() => handleMarkOutOfStock(product._id, product.name)} title="Mark Out of Stock" className="p-2 text-zinc-500 hover:text-red-600 bg-zinc-100 hover:bg-red-50 rounded-lg transition-colors">
-                                                    <XIcon className="size-4" />
-                                                </button>
+                                                <Link to="/admin/inventory" title="Manage inventory" className="p-2 text-zinc-500 hover:text-app-green bg-zinc-100 hover:bg-green-50 rounded-lg transition-colors">
+                                                    <Boxes className="size-4" />
+                                                </Link>
                                             </div>
                                         </td>
                                     </tr>

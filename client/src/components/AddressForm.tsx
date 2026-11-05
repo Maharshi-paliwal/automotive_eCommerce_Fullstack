@@ -1,6 +1,7 @@
 
 import { XIcon } from "lucide-react";
 import type { FormEvent } from "react";
+import AddressLocationPicker from "./AddressLocationPicker";
 
 interface AddressFormProps {
   resetForm: () => void;
@@ -12,6 +13,8 @@ interface AddressFormProps {
     state: string;
     zip: string;
     isDefault: boolean;
+    lat: number | null;
+    lng: number | null;
   };
   setform: (form: AddressFormProps["form"]) => void;
   editingId: string | null;
@@ -30,6 +33,9 @@ const AddressForm = ({
   ) => {
     setform({ ...form, [field]: value });
   };
+  const coordinates = typeof form.lat === "number" && typeof form.lng === "number"
+    ? { lat: form.lat, lng: form.lng }
+    : null;
 
   return (
     <div
@@ -157,6 +163,11 @@ const AddressForm = ({
               onChange={(e) => updateField("zip", e.target.value)}
             />
           </div>
+
+          <AddressLocationPicker
+            value={coordinates}
+            onChange={(point) => setform({ ...form, lat: point.lat, lng: point.lng })}
+          />
 
           {/* Default address */}
           <label className="flex cursor-pointer items-center gap-3 rounded-xl

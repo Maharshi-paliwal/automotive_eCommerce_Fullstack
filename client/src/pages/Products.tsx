@@ -2,11 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { Product } from "../types/index";
-import {
-  BrandsData,
-  categories,
-  dummyProducts,
-} from "../assets/assets";
+import { BrandsData, categories } from "../assets/assets";
 import {
   ChevronDown,
   Home,
@@ -16,6 +12,9 @@ import {
 import ProductCard from "../components/ProductCard";
 import LoaderSecondary from "../components/LoaderSecondary";
 import FiltersPanel from "../components/FiltersPanel";
+import { listProducts } from "../api/productApi";
+import { errorMessage } from "../api/http";
+import toast from "react-hot-toast";
 
 const Products = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -39,67 +38,21 @@ const Products = () => {
     const loadProducts = async () => {
       setLoading(true);
 
-      // Simulate a brief loading state for local dummy data.
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      if (cancelled) return;
-
       const selectedBrand = BrandsData.find(
         (b) => b.slug === brand
       );
-
-      let filteredProducts = dummyProducts.filter((p) => {
-        const matchesCategory =
-          !category ||
-          p.category.toLowerCase() === category.toLowerCase();
-
-        const matchesBrand =
-          !brand ||
-          p.brand.toLowerCase() ===
-            (selectedBrand?.name ?? brand).toLowerCase();
-
-        const matchesMinPrice =
-          !minPrice || p.price >= Number(minPrice);
-
-        const matchesMaxPrice =
-          !maxPrice || p.price <= Number(maxPrice);
-
-        return (
-          matchesCategory &&
-          matchesBrand &&
-          matchesMinPrice &&
-          matchesMaxPrice
-        );
+      const products = await listProducts({
+        ...(category ? { category } : {}),
+        ...(brand ? { brand: selectedBrand?.name ?? brand } : {}),
+        ...(minPrice ? { minPrice } : {}),
+        ...(maxPrice ? { maxPrice } : {}),
+        ...(sort === "price_asc" ? { sort: "price-low" } : {}),
+        ...(sort === "price_desc" ? { sort: "price-high" } : {}),
       });
-
-      // Sorting
-      switch (sort) {
-        case "price_asc":
-          filteredProducts.sort((a, b) => a.price - b.price);
-          break;
-
-        case "price_desc":
-          filteredProducts.sort((a, b) => b.price - a.price);
-          break;
-
-        case "rating":
-          filteredProducts.sort((a, b) => b.rating - a.rating);
-          break;
-
-        case "top":
-          filteredProducts.sort((a, b) =>
-            a.name.localeCompare(b.name)
-          );
-          break;
-
-        default:
-          break;
-      }
-
-      // Exclude out-of-stock products.
-      filteredProducts = filteredProducts.filter(
-        (product) => product.stock > 0
-      );
+      if (cancelled) return;
+      const filteredProducts = products.filter((product) => product.stock > 0);
+      if (sort === "rating") filteredProducts.sort((a, b) => b.rating - a.rating);
+      if (sort === "top") filteredProducts.sort((a, b) => a.name.localeCompare(b.name));
 
       const pageSize = 8;
       const totalPages = Math.max(
@@ -117,8 +70,7 @@ const Products = () => {
       setTotalPages(totalPages);
       setLoading(false);
     };
-
-    loadProducts();
+    loadProducts().catch((error) => { if (!cancelled) { toast.error(errorMessage(error, "Could not load products.")); setProducts([]); setLoading(false); } });
 
     return () => {
       cancelled = true;

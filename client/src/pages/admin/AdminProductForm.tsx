@@ -1,18 +1,22 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeftIcon } from "lucide-react";
-import { categories, dummyProducts } from "../../assets/assets";
+import { categories } from "../../assets/assets";
 // import Loading from "../../components/Loading";
 import Loader from "../../components/LoaderSecondary";
+import { createProduct, getProduct, updateProduct, uploadProductImage } from "../../api/productApi";
+import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 
 export default function AdminProductForm() {
     const { id } = useParams();
     const isEdit = Boolean(id);
+    const navigate = useNavigate();
 
     
 
     const [loading, setLoading] = useState(isEdit);
-    const [saving] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [imageFile, setImageFile] = useState<File | null>(null);
 
       const handleLoaderComplete = useCallback(() => setLoading(true), [])
@@ -32,17 +36,25 @@ export default function AdminProductForm() {
 
     useEffect(() => {
         const fetchData = async () => {
-            if (isEdit) {
-                setFormData(() => dummyProducts.find((p) => p._id === id) as any)
+            if (isEdit && id) {
+                try { const product = await getProduct(id); setFormData({ name: product.name, description: product.description, price: String(product.price), originalPrice: String(product.originalPrice ?? ""), image: product.image, category: product.category, unit: product.unit, stock: String(product.stock), isOrganic: Boolean((product as any).isOrganic) }); }
+                catch (error) { toast.error(error instanceof Error ? error.message : "Could not load product."); }
             }
-            setLoading(false)
+            setLoading(false);
         };
         fetchData();
     }, [id, isEdit]);
 
     const handleSubmit = async (e: React.SubmitEvent) => {
         e.preventDefault();
-
+        setSaving(true);
+        try {
+            const image = imageFile ? await uploadProductImage(imageFile) : formData.image;
+            const payload = { name: formData.name, description: formData.description, price: Number(formData.price), ...(formData.originalPrice ? { originalPrice: Number(formData.originalPrice) } : {}), image, category: formData.category, unit: formData.unit, stock: Number(formData.stock), isOrganic: formData.isOrganic };
+            if (isEdit && id) await updateProduct(id, payload); else await createProduct(payload);
+            toast.success(isEdit ? "Product updated." : "Product created."); navigate("/admin/products");
+        } catch (error) { toast.error(error instanceof Error ? error.message : "Could not save product."); }
+        finally { setSaving(false); }
     };
 
     return (
@@ -102,7 +114,7 @@ export default function AdminProductForm() {
                                 <textarea required rows={4} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="w-full px-4 py-2.5 rounded-lg border border-zinc-200 focus:border-app-green focus:ring-1 focus:ring-app-green outline-none transition-all resize-none" />
                             </div>
                             <div className="flex items-center gap-3">
-                                <label htmlFor="isOrganic" className="text-sm font-medium text-zinc-700 cursor-pointer">Organic</label>
+                                    <label htmlFor="isOrganic" className="text-sm font-medium text-zinc-700 cursor-pointer">Organic</label>
                                 <input type="checkbox" id="isOrganic" checked={formData.isOrganic} onChange={e => setFormData({ ...formData, isOrganic: e.target.checked })} className="size-5 text-app-green rounded border-zinc-300 focus:ring-app-green cursor-pointer" />
                             </div>
                         </div>

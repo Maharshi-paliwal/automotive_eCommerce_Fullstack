@@ -1,13 +1,18 @@
-import { NavLink, Outlet } from "react-router-dom";
-import { PlusIcon, PackageSearchIcon, ShoppingBagIcon, LogOutIcon, BarChart3Icon, ShieldIcon, Truck } from "lucide-react";
+import { Navigate, NavLink, Outlet } from "react-router-dom";
+import { PlusIcon, PackageSearchIcon, ShoppingBagIcon, LogOutIcon, BarChart3Icon, ShieldIcon, Truck, Boxes } from "lucide-react";
 import Navbar from "../../components/Navbar";
 
 export default function AdminLayout() {
+    let user: { isAdmin?: boolean } | null = null;
+    try { user = JSON.parse(localStorage.getItem("user") || "null"); } catch { user = null; }
+    if (!localStorage.getItem("token")) return <Navigate to="/login" replace />;
+    if (!user?.isAdmin) return <Navigate to="/" replace />;
 
     const AdminLinkData = [
         { to: "/admin", label: "Dashboard", icon: BarChart3Icon },
         { to: "/admin/products/new", label: "Add Product", icon: PlusIcon },
         { to: "/admin/products", label: "Products", icon: PackageSearchIcon },
+        { to: "/admin/inventory", label: "Inventory", icon: Boxes },
         { to: "/admin/orders", label: "Orders", icon: ShoppingBagIcon },
         { to: "/admin/delivery-partners", label: "Delivery Partners", icon: Truck },
         { to: "/", label: "Exit", icon: LogOutIcon },

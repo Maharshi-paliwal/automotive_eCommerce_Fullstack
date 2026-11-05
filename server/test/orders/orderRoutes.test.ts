@@ -26,6 +26,7 @@ describe('order routes', () => {
     const tx = {
       product: { findMany: jest.fn<(...args: any[]) => Promise<any[]>>().mockResolvedValue(products), updateMany: jest.fn<(...args: any[]) => Promise<any>>().mockResolvedValue({ count: 1 }) },
       order: { create: jest.fn<(...args: any[]) => Promise<any>>().mockImplementation(async ({ data }) => ({ id: 'order-1', ...data })) },
+      inventoryMovement: { create: jest.fn<(...args: any[]) => Promise<any>>().mockResolvedValue({}) },
       outboxEvent: { createMany: jest.fn<(...args: any[]) => Promise<any>>().mockResolvedValue({ count: 2 }), create: jest.fn() },
     }
     mockPrisma.$transaction.mockImplementation(async (operation) => operation(tx))
@@ -53,6 +54,7 @@ describe('order routes', () => {
       },
       outboxEvent: { createMany: jest.fn<(...args: any[]) => Promise<any>>().mockResolvedValue({ count: 2 }), create: jest.fn() },
       order: { create: jest.fn<(...args: any[]) => Promise<any>>().mockImplementation(async ({ data }) => ({ id: 'order-1', ...data })) },
+      inventoryMovement: { create: jest.fn<(...args: any[]) => Promise<any>>().mockResolvedValue({}) },
     }
     mockPrisma.$transaction.mockImplementation(async (operation) => operation(tx))
 
@@ -68,6 +70,8 @@ describe('order routes', () => {
       where: { id: 'product-1', stock: { gte: 2 } }, data: { stock: { decrement: 2 } },
     })
     expect(tx.order.create).toHaveBeenCalled()
+    expect(tx.inventoryMovement.create).toHaveBeenCalledTimes(1)
+    expect(tx.inventoryMovement.create).toHaveBeenCalledWith({ data: expect.objectContaining({ movementType: "ORDER_DEDUCTION", quantityChange: -2, stockBefore: 5, stockAfter: 3, relatedOrderId: expect.any(String) }) })
     expect(tx.outboxEvent.createMany).toHaveBeenCalledWith({ data: expect.arrayContaining([
       expect.objectContaining({ dedupeKey: `order:${response.body.order.id}:process`, jobName: 'process-order' }),
       expect.objectContaining({ dedupeKey: `order:${response.body.order.id}:rider`, jobName: 'auto-assign-rider' }),

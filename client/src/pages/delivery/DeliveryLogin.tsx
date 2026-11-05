@@ -1,15 +1,22 @@
 import { useState } from "react";
 import { BikeIcon } from "lucide-react";
 import { heroSectionData } from "../../assets/assets";
+import { loginDelivery } from "../../api/authApi";
+import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 
 export default function DeliveryLogin() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const loading = false;
+    const [loading, setLoading] = useState(false);
+    const navigate = useNavigate();
 
     const handleSubmit = async (e: React.SubmitEvent) => {
         e.preventDefault();
-
+        setLoading(true);
+        try { await loginDelivery({ email, password }); navigate("/delivery"); }
+        catch (error) { toast.error(error instanceof Error ? error.message : "Could not sign in."); }
+        finally { setLoading(false); }
     };
 
     return (

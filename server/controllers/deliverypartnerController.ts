@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { getJwtSecret } from "../config/runtimeConfig.js";
 import { updateAssignedRiderLocation } from "../config/socket.js";
+import { cancelOrder as cancelOrderWorkflow } from "../services/cancelOrder.js";
 
 const ACTIVE_STATUSES = ["Assigned", "Packed", "Out for Delivery"];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -65,7 +66,7 @@ export const completeDelivery = async (req: Request, res: Response) => {
   }
   const order = await prisma.order.findFirst({ where: { id: orderId, deliveryPartnerId: req.partner!.id } });
   if (!order) return res.status(404).json({ message: "Delivery not found" });
-  if (!ACTIVE_STATUSES.includes(order.status ?? "")) return res.status(409).json({ message: "This delivery cannot be completed" });
+  if (order.status !== "Out for Delivery") return res.status(409).json({ message: "This delivery cannot be completed" });
   if (order.deliveryOtp !== otp) return res.status(400).json({ message: "Invalid OTP" });
 
   const history = Array.isArray(order.statusHistory) ? order.statusHistory : [];
@@ -88,68 +89,10 @@ export const cancelDelivery = async (req: Request, res: Response) => {
   if (!UUID_PATTERN.test(orderId) || (reason !== undefined && (typeof reason !== "string" || reason.length > 500))) {
     return res.status(400).json({ message: "Invalid order ID or cancellation reason" });
   }
-  const order = await prisma.order.findFirst({ where: { id: orderId, deliveryPartnerId: req.partner!.id } });
-  if (!order) return res.status(404).json({ message: "Delivery not found" });
-  if (!ACTIVE_STATUSES.includes(order.status ?? "")) return res.status(409).json({ message: "This delivery cannot be cancelled" });
-  const paidCardOrder = order.paymentMethod === "card" && order.isPaid === true;
-  if (paidCardOrder && (!order.razorpayPaymentId || order.refundStatus === "processed")) {
-    return res.status(409).json({ message: "Payment state prevents cancellation" });
-  }
-
-  const result = await prisma.$transaction(async (tx) => {
-    const history = Array.isArray(order.statusHistory) ? order.statusHistory : [];
-    const update = await tx.order.updateMany({
-      where: { id: orderId, deliveryPartnerId: req.partner!.id, status: order.status },
-      data: {
-        status: "Cancelled",
-        statusHistory: [...history, { status: "Cancelled", note: reason || "", timestamp: new Date().toISOString() }],
-        deliveryOtp: "",
-        ...(paidCardOrder ? { paymentStatus: "refund_pending", refundStatus: "pending" } : {}),
-      },
-    });
-    if (update.count !== 1) return null;
-
-    for (const item of Array.isArray(order.items) ? order.items : []) {
-      if (!item || typeof item !== "object" || Array.isArray(item) || !("product" in item) || !("quantity" in item)) continue;
-      const productId = item.product;
-      const quantity = item.quantity;
-      if (typeof productId === "string" && typeof quantity === "number" && Number.isInteger(quantity) && quantity > 0) {
-        await tx.product.updateMany({ where: { id: productId }, data: { stock: { increment: quantity } } });
-      }
-    }
-
-    if (paidCardOrder) {
-      const attemptNumber = order.refundAttempts + 1;
-      const amount = Math.round(Number(order.total) * 100);
-      const idempotencyKey = `tn-refund-${order.id}-${attemptNumber}`;
-      const refundState = await tx.order.updateMany({
-        where: { id: orderId, status: "Cancelled", refundAttempts: order.refundAttempts },
-        data: {
-          refundAttempts: attemptNumber,
-          refundAmount: amount,
-          refundIdempotencyKey: idempotencyKey,
-          refundRequestedAt: new Date(),
-        },
-      });
-      if (refundState.count !== 1) throw new Error("Could not persist the cancellation refund state");
-      await tx.refundAttempt.create({
-        data: { orderId, attemptNumber, paymentId: order.razorpayPaymentId!, amount, idempotencyKey, status: "pending" },
-      });
-      await tx.outboxEvent.create({
-        data: {
-          dedupeKey: `refund:${orderId}:attempt:${attemptNumber}`,
-          queue: "order-processing",
-          jobName: "refund-expired-payment",
-          payload: { orderId, attemptNumber },
-          availableAt: new Date(),
-        },
-      });
-    }
-
-    return tx.order.findUnique({ where: { id: orderId } });
-  });
-  if (!result) return res.status(409).json({ message: "Delivery changed; refresh and try again" });
-  const updatedOrder = hideDeliveryOtp(result);
+  const result = await cancelOrderWorkflow({ orderId, reason, deliveryPartnerId: req.partner!.id });
+  if (result.kind === "not-found") return res.status(404).json({ message: "Delivery not found" });
+  if (result.kind === "conflict") return res.status(409).json({ message: "This delivery cannot be cancelled in its current state" });
+  const updatedOrder = hideDeliveryOtp(result.order as { deliveryOtp?: unknown });
   return res.json({ order: updatedOrder, message: "Delivery cancelled" });
 };
 

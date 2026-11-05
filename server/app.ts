@@ -8,6 +8,8 @@ import orderRouter from "./routes/orderRoutes.js";
 import addressRouter from "./routes/addressRoutes.js";
 import adminRouter from "./routes/adminRoutes.js";
 import deliverypartnerRouter from "./routes/deliverypartnerRoutes.js";
+import complaintRouter from "./routes/complaintRoutes.js";
+import notificationRouter from "./routes/notificationRoutes.js";
 import { handleRazorpayWebhook } from "./controllers/razorpayWebhookController.js";
 import { parseClientOrigins, validateJwtSecret } from "./config/runtimeConfig.js";
 
@@ -45,6 +47,8 @@ app.use("/api/products", productRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/orders", orderRouter);
 app.use("/api/addresses", addressRouter);
+app.use("/api/complaints", complaintRouter);
+app.use("/api/notifications", notificationRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/delivery", deliverypartnerRouter);
 
@@ -55,6 +59,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     : NaN;
   if (status === 400) return res.status(400).json({ message: "Invalid request body" });
   if (status === 413) return res.status(413).json({ message: "Request body is too large" });
+  if (status === 503) return res.status(503).json({ message: "Required administrator notifications are unavailable" });
   res.status(500).json({ message: "server error" });
 });
 

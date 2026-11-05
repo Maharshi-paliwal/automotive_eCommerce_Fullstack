@@ -3,8 +3,10 @@ import { prisma } from "../config/prisma.js";
 import { redisConnection } from "../config/redis.js";
 import { createIdempotentRefund, razorpay } from "../config/razorpay.js";
 import { retryOutboxJob } from "./outboxDispatcher.js";
+import { deliverNotificationPush } from "../services/pushDeliveryService.js";
 
 const db = prisma;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const processOrder = async (orderId: string) => {
   const order = await db.order.findUnique({ where: { id: orderId } });
@@ -40,11 +42,26 @@ export const expireUnpaidOrder = async (orderId: string) => db.$transaction(asyn
       const productId = item.product;
       const quantity = item.quantity;
       if (typeof productId === "string" && typeof quantity === "number" && Number.isInteger(quantity) && quantity > 0) {
-        await tx.product.updateMany({ where: { id: productId }, data: { stock: { increment: quantity } } });
+        const product = await tx.product.findUnique({ where: { id: productId } });
+        if (!product) continue;
+        if (product.stock === null) {
+          await tx.inventoryMovement.create({ data: {
+            productId, movementType: "UNPAID_ORDER_EXPIRY_RESTORATION", quantityChange: null,
+            stockBefore: null, stockAfter: null, reason: "Restoration skipped because stock was unknown", relatedOrderId: order.id,
+          }});
+          continue;
+        }
+        const changed = await tx.product.updateMany({ where: { id: productId, stock: product.stock }, data: { stock: { increment: quantity } } });
+        if (changed.count !== 1) throw new Error("Product stock changed during order expiry");
+        await tx.inventoryMovement.create({ data: {
+          productId, movementType: "UNPAID_ORDER_EXPIRY_RESTORATION", quantityChange: quantity,
+          stockBefore: product.stock, stockAfter: product.stock + quantity,
+          reason: "Stock restored after unpaid order expiry", relatedOrderId: order.id,
+        }});
       }
     }
   }
-});
+}, { isolationLevel: "Serializable" });
 
 const enqueueRefundJob = async (orderId: string, attemptNumber: number, suffix: string, delay: number) => {
   const dedupeKey = `refund:${orderId}:attempt:${attemptNumber}:${suffix}`;
@@ -219,6 +236,14 @@ const processExpiredPaymentRefund = async (orderId: string, requestedAttemptNumb
 };
 
 export const processOrderJob = async (job: Pick<Job, "name" | "data">) => {
+  if (job.name === "deliver-notification-push") {
+    const { notificationId, subscriptionId } = job.data as { notificationId?: unknown; subscriptionId?: unknown };
+    if (typeof notificationId !== "string" || !UUID_PATTERN.test(notificationId) ||
+        typeof subscriptionId !== "string" || !UUID_PATTERN.test(subscriptionId)) {
+      throw new Error("Notification push job has invalid identifiers");
+    }
+    return deliverNotificationPush(notificationId, subscriptionId);
+  }
   if (!["process-order", "expire-unpaid-order", "refund-expired-payment"].includes(job.name)) {
     throw new Error(`Unknown job type: ${job.name}`);
   }

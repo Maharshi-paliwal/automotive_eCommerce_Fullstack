@@ -2,10 +2,14 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals'
 
 const mockFindUnique = jest.fn<(...args: any[]) => Promise<any>>()
 const mockUpdateMany = jest.fn<(...args: any[]) => Promise<any>>()
+const mockDeliverNotificationPush = jest.fn<(...args: any[]) => Promise<any>>()
 let mockProcessJob: (job: any) => Promise<any> = async () => { throw new Error('Worker processor was not initialized') }
 
 jest.mock('../../config/prisma.js', () => ({ prisma: { order: { findUnique: mockFindUnique, updateMany: mockUpdateMany } } }))
 jest.mock('../../config/redis.js', () => ({ redisConnection: {} }))
+jest.mock('../../services/pushDeliveryService.js', () => ({
+  deliverNotificationPush: mockDeliverNotificationPush,
+}))
 jest.mock('bullmq', () => ({
   Queue: jest.fn().mockImplementation(() => ({ add: jest.fn().mockResolvedValue({ id: 'job-1' }) })),
   Worker: jest.fn().mockImplementation((_queue: string, processor: (job: any) => Promise<any>) => {
@@ -18,6 +22,27 @@ import '../../bullmq/orderWorker.js'
 
 describe('order processing worker', () => {
   afterEach(() => jest.clearAllMocks())
+
+  it('dispatches notification push jobs through the existing order-processing queue', async () => {
+    mockDeliverNotificationPush.mockResolvedValue({ delivered: true })
+    const notificationId = '11111111-1111-4111-8111-111111111111'
+    const subscriptionId = '22222222-2222-4222-8222-222222222222'
+
+    await expect(mockProcessJob({
+      name: 'deliver-notification-push',
+      data: { notificationId, subscriptionId },
+    })).resolves.toEqual({ delivered: true })
+
+    expect(mockDeliverNotificationPush).toHaveBeenCalledWith(notificationId, subscriptionId)
+  })
+
+  it('rejects malformed notification push job payloads for BullMQ retry handling', async () => {
+    await expect(mockProcessJob({
+      name: 'deliver-notification-push',
+      data: { notificationId: 'invalid', subscriptionId: 'invalid' },
+    })).rejects.toThrow("Notification push job has invalid identifiers")
+    expect(mockDeliverNotificationPush).not.toHaveBeenCalled()
+  })
 
   it('confirms a placed order and appends to its history', async () => {
     const order = { id: 'order-1', status: 'Placed', paymentMethod: 'cash', isPaid: false, statusHistory: [{ status: 'Placed' }] }

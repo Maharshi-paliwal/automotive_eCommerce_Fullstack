@@ -28,6 +28,40 @@ export const authenticateSocketToken = (token: string | null, secret: string): S
   return identity;
 };
 
+export const joinAuthenticatedUserRoom = async (
+  socket: Pick<Socket, "join">,
+  identity: SocketIdentity,
+): Promise<void> => {
+  await socket.join(`user:${identity.id}`);
+};
+
+export const emitNotificationToUser = (userId: string, notification: {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  referenceType: string | null;
+  referenceId: string | null;
+  createdAt: Date;
+}) => {
+  if (!io) return false;
+  // Event contract: notification:new { notificationId, notification } is scoped to the authenticated user's room.
+  const room = `user:${userId}`;
+  io.to(room).emit("notification:new", {
+    notificationId: notification.id,
+    notification: {
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      referenceType: notification.referenceType,
+      referenceId: notification.referenceId,
+      createdAt: notification.createdAt,
+    },
+  });
+  return true;
+};
+
 export const joinOwnedOrderRoom = async (socket: Pick<Socket, "join">, identity: SocketIdentity, orderId: unknown): Promise<boolean> => {
   if (identity.role === "delivery" || typeof orderId !== "string" || !UUID_PATTERN.test(orderId)) return false;
   const ownedOrder = await prisma.order.findFirst({
@@ -99,6 +133,9 @@ export const attachSocketServer = (httpServer: HttpServer): SocketServer => {
 
   nextIo.on("connection", (socket) => {
     const identity = socket.data.identity as SocketIdentity;
+    void joinAuthenticatedUserRoom(socket, identity).catch((error) => {
+      console.error("Could not join authenticated Socket.IO user room:", error instanceof Error ? error.message : "unknown error");
+    });
 
     socket.on("order:join", async (orderId: unknown, acknowledge?: (result: { joined: boolean }) => void) => {
       try {

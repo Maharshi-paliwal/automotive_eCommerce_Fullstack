@@ -1,12 +1,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Zap } from "lucide-react";
-import {
-  dummyProducts,
-} from "../assets/assets";
 import type { Product } from "../types";
 import Loader from "../components/LoaderSecondary";
 import ProductCard from "../components/ProductCard";
+import { getFlashDeals } from "../api/productApi";
+import { errorMessage } from "../api/http";
+import toast from "react-hot-toast";
 
 const FlashDeals = () => {
   const [Products, setProducts] = useState<Product[]>([]);
@@ -17,16 +17,9 @@ const FlashDeals = () => {
     let cancelled = false;
 
     const loadDeals = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      if (cancelled) return;
-
-      const deals = dummyProducts.filter(
-        (product) => product.stock > 0
-      );
-
-      setProducts(deals);
-      setLoading(false);
+      try { const deals = await getFlashDeals(); if (!cancelled) setProducts(deals); }
+      catch (error) { if (!cancelled) { toast.error(errorMessage(error, "Could not load deals.")); setProducts([]); } }
+      finally { if (!cancelled) setLoading(false); }
     };
 
     loadDeals();

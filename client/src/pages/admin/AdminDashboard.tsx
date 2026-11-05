@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { PackageIcon, UsersIcon, ShoppingBagIcon, AlertTriangleIcon } from "lucide-react";
 import Loader from "../../components/LoaderSecondary";
-import { dummyAdminDashboardData, statusColors } from "../../assets/assets";
+import { statusColors } from "../../assets/assets";
+import { getAdminStats } from "../../api/adminApi";
+import toast from "react-hot-toast";
 
 
 interface Stats {
@@ -21,10 +23,7 @@ export default function AdminDashboard() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setTimeout(() => {
-            setStats(dummyAdminDashboardData);
-            setLoading(false);
-        }, 1000);
+        getAdminStats().then(setStats).catch((error) => toast.error(error instanceof Error ? error.message : "Could not load dashboard.")).finally(() => setLoading(false));
     }, []);
   const handleLoaderComplete = useCallback(() => setLoading(true), [])
 

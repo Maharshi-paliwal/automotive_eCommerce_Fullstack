@@ -105,7 +105,14 @@ const validateProductInput = (body: unknown, partial: boolean): Record<string, u
 export const createProduct=  async(req:Request, res:Response)=>{
   const data = validateProductInput(req.body, false);
   if (!data) return res.status(400).json({ message: "Invalid product data" });
-  const product= await prisma.product.create({data: { ...data, id: randomUUID() }})
+  const product= await prisma.$transaction(async (tx) => {
+    const created = await tx.product.create({data: { ...data, id: randomUUID() }});
+    if (created.stock !== null) await tx.inventoryMovement.create({ data: {
+      productId: created.id, movementType: "INITIAL_STOCK", quantityChange: created.stock,
+      stockBefore: 0, stockAfter: created.stock, reason: "Initial stock at product creation", adminActorId: req.user!.id,
+    }});
+    return created;
+  });
   res.status(201).json({product})
 }
 
@@ -120,10 +127,38 @@ if (typeof productId !== "string") {
 const data = validateProductInput(req.body, true);
 if (!data) return res.status(400).json({ message: "Invalid product data" });
 
-const product = await prisma.product.update({
-  where: { id: productId },
-  data,
-});
+if (data.stock === undefined) {
+  const product = await prisma.product.update({ where: { id: productId }, data });
+  return res.json({ product });
+}
+
+let product;
+try {
+  product = await prisma.$transaction(async (tx) => {
+    const current = await tx.product.findUnique({ where: { id: productId } });
+    if (!current) return null;
+    const changed = await tx.product.updateMany({ where: { id: productId, stock: current.stock }, data });
+    if (changed.count !== 1) throw new Error("Product stock changed while editing");
+    const updated = await tx.product.findUnique({ where: { id: productId } });
+    if (!updated) return null;
+    if (data.stock !== current.stock) {
+      await tx.inventoryMovement.create({ data: {
+        productId, movementType: "MANUAL_ADJUSTMENT",
+        quantityChange: data.stock !== null && current.stock !== null ? (data.stock as number) - current.stock : null,
+        stockBefore: current.stock, stockAfter: data.stock as number | null,
+        reason: "Stock changed while editing product", adminActorId: req.user!.id,
+      }});
+    }
+    return updated;
+  }, { isolationLevel: "Serializable" });
+} catch (error) {
+  if ((error instanceof Error && error.message === "Product stock changed while editing") ||
+      (error && typeof error === "object" && "code" in error && error.code === "P2034")) {
+    return res.status(409).json({ message: "Product changed concurrently; please retry" });
+  }
+  throw error;
+}
+if (!product) return res.status(404).json({ message: "Product not found" });
 res.json({ product });
 }
 

@@ -5,6 +5,7 @@ import { emailQueue } from "../bullmq/emailQueue.js";
 import { razorpay, razorpayKeyId } from "../config/razorpay.js";
 import { verifyAndRecordPayment } from "../services/paymentService.js";
 import type { Prisma } from "../generated/prisma/client.js";
+import { cancelOrder } from "../services/cancelOrder.js";
 
 const db = prisma;
 const ORDER_STATUSES = new Set(["Placed", "Confirmed", "Assigned", "Packed", "Out for Delivery", "Delivered", "Cancelled"]);
@@ -89,7 +90,7 @@ export const createOrder = async (req: Request, res: Response) => {
     const currentTax = Math.round(currentSubtotal * 0.08 * 100) / 100;
     const currentTotal = Math.round((currentSubtotal + currentDeliveryFee + currentTax) * 100) / 100;
     if (currentTotal !== total) throw new Error("Product prices changed while placing the order; please retry");
-    const stockUpdates: { productId: string; productName: string; stockQuantity: number }[] = [];
+    const stockUpdates: { productId: string; productName: string; stockQuantity: number; stockBefore: number; quantity: number }[] = [];
     for (const productId of productIds) {
       const quantity = quantities.get(productId)!;
       const product = productById.get(productId)!;
@@ -98,7 +99,9 @@ export const createOrder = async (req: Request, res: Response) => {
         data: { stock: { decrement: quantity } },
       });
       if (changed.count !== 1) throw new Error("Product stock changed while placing the order");
-      stockUpdates.push({ productId, productName: product.name ?? productId, stockQuantity: (product.stock ?? 0) - quantity });
+      const stockBefore = product.stock!;
+      const stockAfter = stockBefore - quantity;
+      stockUpdates.push({ productId, productName: product.name ?? productId, stockQuantity: stockAfter, stockBefore, quantity });
     }
     const createdOrder = await tx.order.create({
       data: {
@@ -108,6 +111,11 @@ export const createOrder = async (req: Request, res: Response) => {
         statusHistory: [{ status: "Placed", note: "Order placed successfully", timestamp: new Date().toISOString() }],
       },
     });
+    for (const update of stockUpdates) await tx.inventoryMovement.create({ data: {
+      productId: update.productId, movementType: "ORDER_DEDUCTION", quantityChange: -update.quantity,
+      stockBefore: update.stockBefore, stockAfter: update.stockQuantity,
+      reason: "Stock deducted for order", relatedOrderId: id,
+    }});
     const now = new Date();
     if (paymentMethod === "cash") {
       await tx.outboxEvent.createMany({ data: [
@@ -121,7 +129,13 @@ export const createOrder = async (req: Request, res: Response) => {
       } });
     }
     return { order: createdOrder, stockUpdates };
-  }, { timeout: 15000 });
+  }, { timeout: 15000, isolationLevel: "Serializable" }).catch((error) => {
+    if ((error instanceof Error && (error.message.includes("changed while placing") || error.message.includes("prices changed while placing"))) ||
+        (error && typeof error === "object" && "code" in error && error.code === "P2034")) return "conflict" as const;
+    throw error;
+  });
+
+  if (orderResult === "conflict") return res.status(409).json({ message: "Inventory or pricing changed while placing the order; please retry" });
 
   if (!orderResult) return res.status(404).json({ message: "Product out of stock" });
 
@@ -193,6 +207,15 @@ export const updateOrderStuatus = async (req: Request, res: Response) => {
   const { status, note } = req.body ?? {};
   if (typeof status !== "string" || !ORDER_STATUSES.has(status) || (note !== undefined && (typeof note !== "string" || note.length > 500))) {
     return res.status(400).json({ message: "Invalid order status or note" });
+  }
+  if (status === "Cancelled") {
+    const result = await cancelOrder({ orderId: String(req.params.id), reason: note });
+    if (result.kind === "not-found") return res.status(404).json({ message: "Order not found" });
+    if (result.kind === "conflict") return res.status(409).json({ message: "Order cannot be cancelled in its current state" });
+    return res.json({ order: result.order });
+  }
+  if (status === "Delivered") {
+    return res.status(409).json({ message: "Deliveries must be completed by a delivery partner using the OTP" });
   }
   const order = await db.order.findUnique({ where: { id: String(req.params.id) } });
   if (!order) return res.status(404).json({ message: "Order not found" });

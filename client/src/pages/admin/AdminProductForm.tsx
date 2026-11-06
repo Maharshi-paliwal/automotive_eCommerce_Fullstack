@@ -126,7 +126,7 @@ export default function AdminProductForm() {
                         </div>
 
                         <div className="sticky bottom-0 z-10 -mx-6 -mb-6 flex justify-end rounded-b-2xl border-t border-app-border bg-white/95 px-6 py-4 backdrop-blur">
-                            <button disabled={saving} type="submit" className="px-6 py-2.5 bg-app-orange text-white font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
+                            <button disabled={saving} type="submit" className="rounded-lg bg-app-amber px-6 py-2.5 font-semibold text-white transition-colors duration-200 hover:bg-app-blue disabled:cursor-not-allowed disabled:bg-app-amber-dark disabled:hover:bg-app-amber-dark disabled:opacity-70">
                                 {saving ? (isEdit ? "Saving..." : "Adding...") : (isEdit ? "Save Changes" : "Add Product")}
                             </button>
                         </div>

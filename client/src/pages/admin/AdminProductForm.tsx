@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeftIcon } from "lucide-react";
 import { categories } from "../../assets/assets";
@@ -18,6 +18,7 @@ export default function AdminProductForm() {
     const [loading, setLoading] = useState(isEdit);
     const [saving, setSaving] = useState(false);
     const [imageFile, setImageFile] = useState<File | null>(null);
+    const submissionInProgress = useRef(false);
 
       const handleLoaderComplete = useCallback(() => setLoading(true), [])
     
@@ -47,6 +48,8 @@ export default function AdminProductForm() {
 
     const handleSubmit = async (e: React.SubmitEvent) => {
         e.preventDefault();
+        if (submissionInProgress.current) return;
+        submissionInProgress.current = true;
         setSaving(true);
         try {
             const image = imageFile ? await uploadProductImage(imageFile) : formData.image;
@@ -54,12 +57,15 @@ export default function AdminProductForm() {
             if (isEdit && id) await updateProduct(id, payload); else await createProduct(payload);
             toast.success(isEdit ? "Product updated." : "Product created."); navigate("/admin/products");
         } catch (error) { toast.error(error instanceof Error ? error.message : "Could not save product."); }
-        finally { setSaving(false); }
+        finally {
+            submissionInProgress.current = false;
+            setSaving(false);
+        }
     };
 
     return (
         <>
-            <div className="bg-white rounded-2xl shadow-sm border border-app-border overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-sm border border-app-border">
                 <div className="px-6 py-5 border-b border-app-border flex items-center gap-4">
                     <Link to="/admin/products" className="p-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-500 rounded-lg transition-colors">
                         <ArrowLeftIcon className="size-5" />
@@ -119,9 +125,9 @@ export default function AdminProductForm() {
                             </div>
                         </div>
 
-                        <div className="pt-6 border-t border-app-border flex justify-end">
-                            <button disabled={saving} type="submit" className="px-6 py-2.5 bg-app-orange text-white font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50">
-                                {saving ? "Saving..." : "Save Product"}
+                        <div className="sticky bottom-0 z-10 -mx-6 -mb-6 flex justify-end rounded-b-2xl border-t border-app-border bg-white/95 px-6 py-4 backdrop-blur">
+                            <button disabled={saving} type="submit" className="px-6 py-2.5 bg-app-orange text-white font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
+                                {saving ? (isEdit ? "Saving..." : "Adding...") : (isEdit ? "Save Changes" : "Add Product")}
                             </button>
                         </div>
                     </form>

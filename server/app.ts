@@ -12,6 +12,7 @@ import complaintRouter from "./routes/complaintRoutes.js";
 import notificationRouter from "./routes/notificationRoutes.js";
 import { handleRazorpayWebhook } from "./controllers/razorpayWebhookController.js";
 import { parseClientOrigins, validateJwtSecret } from "./config/runtimeConfig.js";
+import chatRouter from "./routes/chatRoutes.js";
 
 const allowedOrigins = parseClientOrigins(process.env.CLIENT_URL);
 validateJwtSecret(process.env.JWT_SECRET);
@@ -25,6 +26,7 @@ const corsOptions: cors.CorsOptions = {
 };
 
 const app = express();
+app.set("trust proxy", 1);
 app.use((req, res, next) => {
   const origin = req.get("origin");
   if (origin && !allowedOrigins.includes(origin)) return res.status(403).json({ message: "Origin is not allowed" });
@@ -51,6 +53,7 @@ app.use("/api/complaints", complaintRouter);
 app.use("/api/notifications", notificationRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/delivery", deliverypartnerRouter);
+app.use("/api/chat", chatRouter);
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(error instanceof Error ? error.message : "Unknown request error");
